@@ -1,0 +1,1 @@
+CREATE INDEX ticker_insert_date_index ON ticker (insert_date DESC);

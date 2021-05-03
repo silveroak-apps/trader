@@ -1,0 +1,79 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net5.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="ManualUpdates\coin-stats-symbol-exchange-index.sql" />
+    <None Include="ManualUpdates\ticker-symbol-exchange-index.sql" />
+    <None Include="ManualUpdates\reset-sell-analysis-for-signal.sql" />
+    <None Include="ManualUpdates\reset-sell-signal-to-force-sell-now.sql" />
+
+    <EmbeddedResource Include="Scripts\AlwaysRun\Create view overview.sql" />
+    <EmbeddedResource Include="Scripts\AlwaysRun\Create view summary.sql" />
+    <EmbeddedResource Include="Scripts\AlwaysRun\Create or Replace view overview sell analysis.sql" />
+    <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 0_signal_order_summary.sql" />
+    <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 1_futures_positions.sql" />
+    <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 2_futures_pnl.sql" />
+    <EmbeddedResource Include="Scripts\Script 0000 - Create tables.sql" />
+    <EmbeddedResource Include="Scripts\Script 0001 - Add actual price and fee details to exchange order.sql" />
+    <EmbeddedResource Include="Scripts\Script 0002 - Add insert time to sell_analysis_bids.sql" />
+    <EmbeddedResource Include="Scripts\Script 0003 - change_all_dates_back_to_timestamp.sql" />
+    <EmbeddedResource Include="Scripts\Script 0004 - fix kline_data table naming and id.sql" />
+    <EmbeddedResource Include="Scripts\Script 0005 - fix kline_data table takerquoteasset column.sql" />
+    <EmbeddedResource Include="Scripts\Script 0006 - fix kline_data table add PK.sql" />
+    <EmbeddedResource Include="Scripts\Script 0007 - add unique constraint to exchange_order.sql" />
+    <EmbeddedResource Include="Scripts\Script 0008 - add exchange id in tables.sql" />
+    <EmbeddedResource Include="Scripts\Script 0009 - change exchange to exchange id in all tables.sql" />
+    <EmbeddedResource Include="Scripts\Script 0010 - alter exchange add active drop other cols.sql" />
+    <EmbeddedResource Include="Scripts\Script 0011 - add ticker index to make the analysis faster.sql" />
+    <EmbeddedResource Include="Scripts\Script 0012 - added is margin to positive signal.sql" />
+    <EmbeddedResource Include="Scripts\Script 0013 - New watchdog table.sql" /> 
+    <EmbeddedResource Include="Scripts\Script 0014 - added id to watch dog for hibernate support.sql" /> 
+    <EmbeddedResource Include="Scripts\Script 0016 - Alter exchange_order add last trade id.sql" />  
+    <EmbeddedResource Include="Scripts\Script 0015 - alter table name watchdog.sql" />  
+    <EmbeddedResource Include="Scripts\Script 0024 - Alter table coin stats to update tick decimal precision.sql" />  
+    <EmbeddedResource Include="Scripts\Script 0026 - Alter table sell_analysis2 to remove unused columns.sql" />  
+    <EmbeddedResource Include="Scripts\Script 0028 - Alter table exchange_order change order_side data type.sql" />  
+    <EmbeddedResource Include="Scripts\Script 0027 - Alter table sell_analysis2 rename to sell_analysis.sql" />  
+    <EmbeddedResource Include="Scripts\Script 0025 - Alter table coin stats history to update tick decimal precision.sql" />
+    <EmbeddedResource Include="Scripts\Script 0017 - Alter table coin stats to add unique key.sql" />
+    <EmbeddedResource Include="Scripts\Script 0018 - Alter table to fix the constraint.sql" />
+    <EmbeddedResource Include="Scripts\Script 0019 - Insert new bitrix exchange id.sql" />
+    <EmbeddedResource Include="Scripts\Script 0020 - Alter Ticker table.sql" />
+    <EmbeddedResource Include="Scripts\Script 0021 - Create Coin Stats History.sql" />
+    <EmbeddedResource Include="Scripts\Script 0022 - Create or Replace view overview buy analysis.sql" />
+    <EmbeddedResource Include="Scripts\Script 0023 - Create or Replace view overview sell analysis.sql" />
+    <EmbeddedResource Include="Scripts\Script 0029 - Drop unused cloumns.sql" />
+    <EmbeddedResource Include="Scripts\Script 0030 - add amount to positive signal cloumns.sql" />
+    <EmbeddedResource Include="Scripts\Script 0031 - added exchange to kline.sql" />
+    <EmbeddedResource Include="Scripts\Script 0032 - more coin info.sql" />
+    <EmbeddedResource Include="Scripts\Script 0033 - more coin stats.sql" />
+    <EmbeddedResource Include="Scripts\Script 0034 - kline stats.sql" />
+    <EmbeddedResource Include="Scripts\Script 0035 - kline history stats.sql" />
+    <EmbeddedResource Include="Scripts\Script 0036 - Create table futures_signal.sql" />
+    <EmbeddedResource Include="Scripts\Script 0037 - Insert exchange Binance Futures.sql" />
+    <EmbeddedResource Include="Scripts\Script 0038 - Create Strategy Tables.sql" />
+    <EmbeddedResource Include="Scripts\Script 0039 - Create Symbols Tables.sql" />
+    <EmbeddedResource Include="Scripts\Script 0040 - ConfigTable.sql" />
+    <EmbeddedResource Include="Scripts\Script 0041 - Alter Market Event.sql"/>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="dbup-postgresql" Version="4.5.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="5.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="5.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="5.0.1" />
+  </ItemGroup>
+
+</Project>

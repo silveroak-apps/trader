@@ -1,0 +1,1 @@
+ALTER TABLE positive_signal ADD useMargin boolean not null DEFAULT(false);

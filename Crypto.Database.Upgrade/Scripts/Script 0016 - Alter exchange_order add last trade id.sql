@@ -1,0 +1,1 @@
+ALTER TABLE public.exchange_order ADD last_trade_id int8 NOT NULL default 0;

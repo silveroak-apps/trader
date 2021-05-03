@@ -1,0 +1,1 @@
+ALTER TABLE public.wachdog RENAME TO watchdog;

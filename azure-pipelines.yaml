@@ -1,0 +1,18 @@
+trigger:
+    - main
+    - feature/*
+    - bugfix/*
+    - hotfix/*
+
+pool: default
+      
+steps:
+
+- task: Docker@2
+  inputs:
+    containerRegistry: 'cryptobotpublic-bsn-group'
+    repository: 'bsngroup/trader'
+    command: 'build'
+    Dockerfile: 'Dockerfile'
+    tags: |
+      $(Build.SourceVersion)

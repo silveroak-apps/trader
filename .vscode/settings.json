@@ -1,0 +1,4 @@
+{
+    "FSharp.suggestSdkScripts": false,
+    "FSharp.fsacRuntime": "net"
+}

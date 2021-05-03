@@ -1,0 +1,49 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.28803.202
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{7DCA35AB-C4CE-4930-9A43-86EE183DCB0A}"
+	ProjectSection(SolutionItems) = preProject
+		Nuget.config = Nuget.config
+		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Tests", "Tests\Tests.fsproj", "{396699C7-FE29-4CA7-BA39-2C4E1B046DB6}"
+EndProject
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Crypto.Database.Upgrade", "Crypto.Database.Upgrade\Crypto.Database.Upgrade.fsproj", "{6971F7CA-DB3A-4E7D-B82B-C3DF4AB17B24}"
+EndProject
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Crypto.Trader", "Crypto.Trader\Crypto.Trader.fsproj", "{CCC40EBA-7256-4651-BEEF-96FFFFE80281}"
+EndProject
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Crypto.Shared", "Crypto.Shared\Crypto.Shared.fsproj", "{8601C823-659E-40EA-B70B-21234316E2BE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{396699C7-FE29-4CA7-BA39-2C4E1B046DB6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{396699C7-FE29-4CA7-BA39-2C4E1B046DB6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{396699C7-FE29-4CA7-BA39-2C4E1B046DB6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{396699C7-FE29-4CA7-BA39-2C4E1B046DB6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6971F7CA-DB3A-4E7D-B82B-C3DF4AB17B24}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6971F7CA-DB3A-4E7D-B82B-C3DF4AB17B24}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6971F7CA-DB3A-4E7D-B82B-C3DF4AB17B24}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6971F7CA-DB3A-4E7D-B82B-C3DF4AB17B24}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CCC40EBA-7256-4651-BEEF-96FFFFE80281}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CCC40EBA-7256-4651-BEEF-96FFFFE80281}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CCC40EBA-7256-4651-BEEF-96FFFFE80281}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CCC40EBA-7256-4651-BEEF-96FFFFE80281}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8601C823-659E-40EA-B70B-21234316E2BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8601C823-659E-40EA-B70B-21234316E2BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8601C823-659E-40EA-B70B-21234316E2BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8601C823-659E-40EA-B70B-21234316E2BE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C30EA968-BF8F-4455-B16F-91BE2EF4F385}
+	EndGlobalSection
+EndGlobal

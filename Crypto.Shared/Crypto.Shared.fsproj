@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net5.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="ResultEx.fs" />
+    <Compile Include="Config.fs" />
+    <Compile Include="Types.fs" />
+    <Compile Include="DbTypes.fs" />
+    <Compile Include="Db.fs" />
+    <Compile Include="Dapper.Infra.fs" />
+    <Compile Include="Process.fs" />
+    <Compile Include="Binance.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="5.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="5.0.0" />
+    <PackageReference Include="Dapper" Version="2.0.78" />
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+    <PackageReference Include="Npgsql" Version="5.0.3" />
+    <PackageReference Include="FSharpx.Async" Version="1.14.1" />
+    <PackageReference Include="FSharp.Core" Version="5.0.1" />
+    <PackageReference Include="Serilog" Version="2.10.0" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,18 @@
+ALTER TABLE public.ticker ADD	best_ask_price double precision;
+ALTER TABLE public.ticker ADD best_ask_price_quantity double precision;
+ALTER TABLE public.ticker ADD	best_bid_price double precision;
+ALTER TABLE public.ticker ADD	best_bid_quantity_price double precision;
+ALTER TABLE public.ticker ADD	close_trade_quantity double precision;
+ALTER TABLE public.ticker ADD	current_day_close double precision;
+ALTER TABLE public.ticker ADD	event_time double precision;
+ALTER TABLE public.ticker ADD	event_type varchar(255);
+ALTER TABLE public.ticker ADD	high_price double precision;
+ALTER TABLE public.ticker ADD	low_price double precision;
+ALTER TABLE public.ticker ADD	open_price double precision;
+ALTER TABLE public.ticker ADD	previous_day_close double precision;
+ALTER TABLE public.ticker ADD	price_change double precision;
+ALTER TABLE public.ticker ADD	price_percentage_change double precision;
+ALTER TABLE public.ticker ADD	total_trades double precision;
+ALTER TABLE public.ticker ADD	total_trage_base_asset_volume double precision;
+ALTER TABLE public.ticker ADD	total_trage_quote_asset_volume double precision;
+ALTER TABLE public.ticker ADD	weighted_average double precision;

@@ -1,0 +1,38 @@
+Test case 1: Single LONG signal: [PASS]
+- OPEN LONG at proper buy rate (expect: order to be filled and position to be open)
+- then CLOSE LONG at proper sell rate (expect: order to be filled and position to be closed)
+
+Test case 2: Single LONG signal with cancellations: [PASS]
+- OPEN LONG (multiple) at low buy rate (expect: order(s) to be cancelled and position to not be open)
+- then OPEN LONG at proper buy rate (expect: order to be filled and position to be open)
+- then CLOSE LONG at high sell rate (expect: order(s) to be cancelled and position to stay open)
+- then CLOSE LONG at proper sell rate (expect: order to be filled and position to be closed)
+
+Test case 3: Single SHORT signal [PASS]
+- OPEN SHORT at proper sell rate (expect: order to be filled and position to be open)
+- then CLOSE SHORT at proper buy rate (expect: order to be filled and position to be closed)
+
+Test case 4: Single SHORT signal with cancellations: [PASS]
+- OPEN SHORT with low sell rate (expect: order(s) to be cancelled and position to not be open)
+- then OPEN SHORT at proper sell rate (expect: order to be filled and position to be open)
+- then CLOSE SHORT at high buy rate (expect: order(s) to be cancelled, and position to stay open)
+- then CLOSE SHORT at proper buy rate (expect: order to be filled and position to be closed)
+
+Test case 5: Multiple LONG signals in sequence: [PASS]
+Repeat test case 1 'n' times. (n >= 2)
+
+Test case 6: Multiple SHORT signals in sequence: [PASS]
+Repeat test case 3 'n' times. (n >= 2)
+
+Test case 7: Multiple LONG / SHORT signals mixed (eg: LONG, then SHORT, then LONG, then LONG, then SHORT): []
+Repeat test case 1 and 3 'n' times out of order in a mixed sequence. (n >= 2)
+
+Test case 8: USDT vs COINM Futures test: []
+Repeat test case 1 with BTCUSD_PERP symbol 
+Repeat test case 1 with BTCUSDTPERP symbol
+Repeat test case 3 with BTCUSD_PERP symbol 
+Repeat test case 3 with BTCUSDTPERP symbol
+
+Test case 9: Combine diff symbols / COINM+USDT at the same time: [PASS]
+
+
