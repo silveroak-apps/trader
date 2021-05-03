@@ -12,7 +12,7 @@ steps:
   inputs:
     containerRegistry: 'cryptobotpublic-bsn-group'
     repository: 'bsngroup/trader'
-    command: 'build'
+    command: 'buildAndPush'
     Dockerfile: 'Dockerfile'
     tags: |
       $(Build.SourceVersion)
