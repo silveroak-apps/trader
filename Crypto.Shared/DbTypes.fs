@@ -51,7 +51,6 @@ type ExchangeOrder = {
 
 type FuturesSignalCommandStatusUpdate = {
     CommandId: int64
-    ExchangeOrderId: int64
     Status: string
 }
 

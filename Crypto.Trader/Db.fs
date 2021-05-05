@@ -120,31 +120,16 @@ let private setSignalsExpired' (signals: Signal seq) =
     |> Seq.map (fun s -> updateSql, { SignalIdParam.SignalId = s.SignalId } :> obj)
     |> save
 
-let private setSignalCommandsExpired' (signalCommands: FuturesSignalCommandView seq) (status: string) =
+let private setSignalCommandsComplete' (signalCommands: SignalCommandId seq) (status: SignalCommandStatus) =
     let updateSql = "
         UPDATE futures_signal_command
         SET status = @Status, action_date_time = now() at time zone 'utc'
         WHERE id = @CommandId
     "
-    // ExchangeOrder is irrelevant here. Ugly design - TODO improve later.
     signalCommands
-    |> Seq.map (fun s -> updateSql, { FuturesSignalCommandStatusUpdate.CommandId = s.Id; Status = status; ExchangeOrderId = 0L } :> obj)
-    |> save
-
-let private setSignalCommandOrderComplete' id signalId exchangeOrderId signalStatus commandStatus = 
-    let updateSignalCommandSql = "
-        UPDATE futures_signal_command
-        SET exchange_order_id = @ExchangeOrderId,
-            status = @Status,
-            action_date_time = now() at time zone 'utc'
-        WHERE id = @CommandId;
-    " 
-    [
-        (updateSignalCommandSql, { 
-            FuturesSignalCommandStatusUpdate.CommandId = id; 
-            ExchangeOrderId = exchangeOrderId; 
-            Status = commandStatus } :> obj)
-    ]
+    |> Seq.map (fun s -> 
+        let (SignalCommandId scId) = s
+        updateSql, { FuturesSignalCommandStatusUpdate.CommandId = scId; Status = string status; } :> obj)
     |> save
 
 let private getOrdersForSignal' (signalId: int64) = 
@@ -297,8 +282,7 @@ type private DbAgentCommand =
 
     // Futures only
     | GetFuturesSignalCommands of AsyncReplyChannel<FuturesSignalCommandView seq>
-    | SetSignalCommandsExpired of FuturesSignalCommandView seq * string * AsyncReplyChannel<unit>
-    | SetSignalCommandOrderComplete  of int64 * int64 * int64 * string * string * AsyncReplyChannel<unit>
+    | SetSignalCommandComplete  of SignalCommandId seq * SignalCommandStatus * AsyncReplyChannel<unit>
 
     // Common 
     // Save order handles signal updates too :/
@@ -330,13 +314,9 @@ let private dbAgent =
                 | GetFuturesSignalCommands replyCh ->
                     let! signalCommands = getFuturesSignalCommands' |> withRetry 5
                     replyCh.Reply signalCommands
-                
-                | SetSignalCommandsExpired (ss, status, replyCh) ->
-                    do! ((fun () -> setSignalCommandsExpired' ss status) |> withRetry 5)
-                    replyCh.Reply ()
 
-                | SetSignalCommandOrderComplete (id, signalId, exchangeOrderId, signalStatus, commandStatus, replyCh) ->
-                    do! ((fun () -> setSignalCommandOrderComplete' id signalId exchangeOrderId signalStatus commandStatus) |> withRetry 5)
+                | SetSignalCommandComplete (ids, commandStatus, replyCh) ->
+                    do! ((fun () -> setSignalCommandsComplete' ids commandStatus) |> withRetry 5)
                     replyCh.Reply ()
             
                 | SaveOrder (d, t, replyCh) ->
@@ -386,6 +366,12 @@ let getTradedSymbols exchangeId = dbAgent.PostAndAsyncReply (fun replyCh -> GetT
 // Futures
 let getFuturesSignalCommands () = dbAgent.PostAndAsyncReply (fun replyCh -> GetFuturesSignalCommands (replyCh))
 
-let setSignalCommandsExpired commands status = dbAgent.PostAndAsyncReply (fun replyCh -> SetSignalCommandsExpired (commands, status, replyCh))
-
-let setSignalCommandOrderComplete id signalId exchangeOrderId signalStatus commandStatus = dbAgent.PostAndAsyncReply (fun replyCh -> SetSignalCommandOrderComplete (id, signalId, exchangeOrderId, signalStatus, commandStatus, replyCh))
+let setSignalCommandsComplete commandIds commandStatus = 
+    async {
+        try
+            do! dbAgent.PostAndAsyncReply (fun replyCh -> SetSignalCommandComplete (commandIds, commandStatus, replyCh))
+            return (Ok ())
+        with
+        | e -> return Result.Error e
+    }
+    

@@ -98,6 +98,24 @@ type OrderBookTickerInfo = {
     AskQty: decimal
 }
 
+type SignalId = SignalId of int64
+type SignalCommandId = SignalCommandId of int64
+type ExchangeOrderInternalId = ExchangeOrderInternalId of int64
+
+type SignalCommandStatus =
+| CREATED
+| EXPIRED
+| FAILED
+| SUCCESS
+
+with       
+    override this.ToString() =
+        match this with
+        | CREATED -> "CREATED"
+        | EXPIRED -> "EXPIRED"
+        | FAILED  -> "FAILED"
+        | SUCCESS   -> "SUCCESS"
+
 type IExchange = 
     abstract member PlaceOrder : OrderInputInfo -> Async<Result<OrderInfo, OrderError>>
     abstract member QueryOrder : OrderQueryInfo -> Async<OrderStatus>

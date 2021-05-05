@@ -44,7 +44,7 @@ let main (argv: string[]) =
         Log.Information ("Starting futures trader...")
         run (Trade.Futures.processValidSignals
                             Db.getFuturesSignalCommands
-                            Db.setSignalCommandsExpired
+                            Db.setSignalCommandsComplete
                             Db.getExchangeOrder
                             Db.saveOrder)
                             placeRealOrders |> Async.Start

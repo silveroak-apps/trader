@@ -209,7 +209,9 @@ let rec executeOrdersForCommand
 
         // need to compare with <= rather than 0, because or possible rounding issues due to some exchanges having a LOT size.
         if maxAttempts > attempt // TODO include slippage condition
-        then Log.Information("Done retrying {MaxAttempts} times. Giving up on order {order}, signal command {originalSignalCommand}...", maxAttempts)
+        then 
+            Log.Information("Done retrying {MaxAttempts} times. Giving up on order {order}, signal command {originalSignalCommand}...", maxAttempts)
+            return ordersSoFar
         else
             Log.Information ("Starting retry/cancel (attempt: {Attempt}/{MaxAttempts}) for command (with updated qty) {Command}, signal {SignalId}", 
                 attempt, maxAttempts,
@@ -244,7 +246,7 @@ let rec executeOrdersForCommand
                         ExecutedPrice = executedPrice / 1M<price>
                 }
                 let! _ = saveOrder filledOrder
-                ()
+                return updatedOrders
             | _ -> 
                 Log.Information("Trying to cancel order {ExchangeOrder} (Signal: {SignalId}), because it didn't fill yet.",
                     newOrder,
@@ -275,14 +277,19 @@ let rec executeOrdersForCommand
                     Log.Information ("Retrying again - since we didn't fill the original quantity this iteration: Want: {TotalRequiredQty}, FilledSoFar: {FilledQty}",
                         signalCommand.Quantity, executedQty)
                    
-                    do! executeOrdersForCommand exchange saveOrder maxSlippage updatedOrders maxAttempts (attempt + 1) signalCommand 
+                    let! orders = executeOrdersForCommand exchange saveOrder maxSlippage updatedOrders maxAttempts (attempt + 1) signalCommand 
+                    return orders
+                else
+                    return updatedOrders // done, we filled everything!
     }
 
 type private TradeAgentCommand = 
     | FuturesTrade of FuturesSignalCommandView * bool * AsyncReplyChannel<unit>
 
 // serialising calls to placeOrder to be safe
-let private mkTradeAgent (saveOrder: ExchangeOrder -> Async<Result<ExchangeOrder, exn>>) =
+let private mkTradeAgent 
+    (saveOrder: ExchangeOrder -> Async<Result<ExchangeOrder, exn>>)
+    (completeSignalCommands: SignalCommandId seq -> SignalCommandStatus -> Async<Result<unit, exn>>) =
     // safeguard against placing an order for the same signal twice - during the app's lifetime:
     let commandsProcessed = Dictionary<int64, DateTimeOffset>()
 
@@ -330,7 +337,13 @@ let private mkTradeAgent (saveOrder: ExchangeOrder -> Async<Result<ExchangeOrder
                         let! result =
                             asyncResult {
                                 let! exchange = (getExchange exchangeId |> Result.mapError exn)
-                                do! executeOrdersForCommand exchange saveOrder maxSlippage [] maxAttempts attemptCount s
+                                let! orders = executeOrdersForCommand exchange saveOrder maxSlippage [] maxAttempts attemptCount s
+                                let executedQty = getFilledQty orders
+                                let signalCommandStatus =
+                                    if executedQty > 0M
+                                    then SignalCommandStatus.SUCCESS
+                                    else SignalCommandStatus.FAILED
+                                do! completeSignalCommands [(SignalCommandId s.Id)] signalCommandStatus
                             }
 
                         match result with
@@ -358,7 +371,10 @@ let private mkTradeAgent (saveOrder: ExchangeOrder -> Async<Result<ExchangeOrder
 
 let mutable private tradeAgent: MailboxProcessor<TradeAgentCommand> option = None
 
-let processValidSignals getFuturesSignalCommands expireSignalCommands getExchangeOrder 
+let processValidSignals
+    (getFuturesSignalCommands: unit -> Async<FuturesSignalCommandView seq>)
+    (completeSignalCommands: SignalCommandId seq -> SignalCommandStatus -> Async<Result<unit, exn>>)
+    (getExchangeOrder: int64 -> Async<ExchangeOrder option>)
     (saveOrder: ExchangeOrder -> TradeMode -> Async<Result<int64, exn>>)
     (placeRealOrders: bool) =
 
@@ -389,7 +405,7 @@ let processValidSignals getFuturesSignalCommands expireSignalCommands getExchang
 
         // ugly mutable for now :/
         if tradeAgent = None then
-            tradeAgent <- Some <| mkTradeAgent saveOrder'
+            tradeAgent <- Some <| mkTradeAgent saveOrder' completeSignalCommands
 
         do! 
             validCommands
@@ -408,14 +424,23 @@ let processValidSignals getFuturesSignalCommands expireSignalCommands getExchang
         // category 1: too old / stale
         let lapsedStats = oldCommands |> Seq.map(fun s -> s.SignalId, DateTime.UtcNow, s.RequestDateTime, (DateTime.UtcNow - s.RequestDateTime).TotalSeconds)
         if not (oldCommands |> Seq.isEmpty) then
-            Log.Debug ("Found {OldSignalCountThisTick} old signals. Setting to lapsed: {OldBuySignals}. {SignalLapsedStats}", oldCommands, lapsedStats)
-            do! expireSignalCommands oldCommands "COMMAND_EXPIRED"
+            Log.Debug ("Found {SignalCountThisTick} old signals. Setting to lapsed: {SignalCommands}. {SignalLapsedStats}", oldCommands, lapsedStats)
+            let cmdIds = oldCommands |> Seq.map(fun s -> SignalCommandId s.Id)
+            let! result =  completeSignalCommands cmdIds SignalCommandStatus.EXPIRED
+            match result with
+            | Result.Error e -> Log.Warning(e, "Error expiring old / stale signal commands. Ignoring...")
+            | _ -> ()
         
         // category 2: newer command is available, so these previousCommands are invalid now
         let previousCommands = signalCommands |> Seq.except latestCommands
+        let lapsedStats = previousCommands |> Seq.map(fun s -> s.SignalId, DateTime.UtcNow, s.RequestDateTime, (DateTime.UtcNow - s.RequestDateTime).TotalSeconds)
         if not (previousCommands |> Seq.isEmpty) then
-            Log.Debug ("Found {OldSignalCountThisTick} old signals. Setting to lapsed: {OldBuySignals}. {SignalLapsedStats}", oldCommands, lapsedStats)
-            do! expireSignalCommands previousCommands "COMMAND_OVERRIDDEN"
+            Log.Debug ("Found {SignalCountThisTick} overridden signals. Setting to lapsed: {SignalCommands}. {SignalLapsedStats}", previousCommands, lapsedStats)
+            let cmdIds = previousCommands |> Seq.map(fun s -> SignalCommandId s.Id)
+            let! result =  completeSignalCommands cmdIds SignalCommandStatus.EXPIRED
+            match result with
+            | Result.Error e -> Log.Warning(e, "Error expiring previous / overridden signal commands. Ignoring...")
+            | _ -> ()
 
         // // listen will handle websocket updates, but will maintain state to open only one connection
         if validCommands |> Seq.length > 0 && placeRealOrders

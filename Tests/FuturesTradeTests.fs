@@ -90,7 +90,7 @@ module IntegrationTests =
             let! commandId = setupSignalCommands signalId
             do! Trade.Futures.processValidSignals
                                 Db.getFuturesSignalCommands
-                                Db.setSignalCommandsExpired
+                                Db.setSignalCommandsComplete
                                 Db.getExchangeOrder
                                 Db.saveOrder
                                 false

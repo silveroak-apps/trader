@@ -93,7 +93,7 @@ let placeOrders (signalCommand: FuturesSignalCommandView) : Async<Result<unit, e
                 return { o with Id = id }
             }
         let! exchange = (Futures.getExchange signalCommand.ExchangeId |> Result.mapError exn)
-        do! Futures.executeOrdersForCommand exchange saveOrder maxSlippage [] maxAttempts attemptCount signalCommand
+        let! _ = Futures.executeOrdersForCommand exchange saveOrder maxSlippage [] maxAttempts attemptCount signalCommand
         return ()
     }
 
