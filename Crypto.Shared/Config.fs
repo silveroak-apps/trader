@@ -6,6 +6,7 @@ open System.IO
 open System
 open Newtonsoft.Json
 open Newtonsoft.Json.Serialization
+open Serilog
 
 let getDefaultSerialisationSettings = 
     let settings = JsonSerializerSettings (
@@ -25,6 +26,7 @@ let appConfig =
 
 let connectionStringWithName key = 
     let cnnStringsSection = appConfig.GetSection("ConnectionStrings")
+    Log.Verbose("Using connection string: {ConnectionString}", cnnStringsSection.Item key)
     cnnStringsSection.Item key
 
 let pgsqlConnectionString = connectionStringWithName "PostgresConnection"
