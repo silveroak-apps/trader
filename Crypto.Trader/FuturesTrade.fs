@@ -369,7 +369,7 @@ let processValidSignals getFuturesSignalCommands expireSignalCommands getExchang
         }
     
     async {
-        if placeRealOrders then Log.Debug ("Getting signal commands to action")
+        Log.Debug ("Getting signal commands to action")
         let! signalCommands = getFuturesSignalCommands ()
         
         let countOfCommands = signalCommands |> Seq.length
