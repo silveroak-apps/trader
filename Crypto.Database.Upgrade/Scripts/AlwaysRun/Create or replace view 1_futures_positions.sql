@@ -6,15 +6,12 @@ AS SELECT fs2.signal_id,
     fs2.position_type,
     fs2.exchange_id,
     fs3.strategy_pair_name,
-    case
-    	when COALESCE(open_command.status, '') = 'CREATED' and coalesce (close_command.status, '') = '' then 'CREATED'
-    	when COALESCE(open_command.status, '') = 'EXPIRED' and coalesce (close_command.status, '') = '' then 'EXPIRED'
-    	when COALESCE(open_command.status, '') = 'SUCCESS' and coalesce (close_command.status, '') IN ('', 'CREATED', 'EXPIRED', 'FAILED') and (COALESCE(buy.executed_qty, 0) > 0 OR COALESCE(sell.executed_qty, 0) > 0) then 'ACTIVE'
-    	when COALESCE(open_command.status, '') = 'FAILED'  and coalesce (close_command.status, '') = '' and (COALESCE(buy.executed_qty, 0) + COALESCE(sell.executed_qty, 0) = 0) then 'ENDED'
-        WHEN COALESCE(buy.executed_qty, 0) = COALESCE(sell.executed_qty, 0) AND COALESCE(buy.executed_qty, 0) > 0 AND (COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0)) = 0 
-        		and COALESCE(open_command.status, '') = 'SUCCESS' and COALESCE(close_command.status, '') = 'SUCCESS'
-        	THEN 'ENDED'
-        ELSE 'UNKNOWN' -- CONCAT('UNKNOWN (open: ', open_command.status, ', close: ', close_command.status, ')') -- bugs in the code could cause signals to stay active - we need to alert on this
+    CASE
+        WHEN (COALESCE(buy.executed_qty, 0) + COALESCE(sell.executed_qty, 0) = 0) AND (COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0) = 0) AND (COALESCE(open_commands.commandCount, 0) + COALESCE(close_commands.commandCount, 0)) > 0 THEN 'CREATED'
+        WHEN COALESCE(buy.pending_qty, 0) > 0 OR COALESCE(sell.pending_qty, 0) > 0 THEN 'ACTIVE' 
+        WHEN (COALESCE(buy.executed_qty, 0) > 0 OR COALESCE(sell.executed_qty, 0) > 0) AND COALESCE(buy.executed_qty, 0) <> COALESCE(sell.executed_qty, 0) THEN 'ACTIVE'
+        WHEN COALESCE(buy.executed_qty, 0) = COALESCE(sell.executed_qty, 0) AND COALESCE(buy.executed_qty, 0) > 0 AND COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0) = 0 THEN 'ENDED'
+        ELSE 'UNKNOWN'
     END AS signal_status,
     CASE
         WHEN COALESCE(buy.executed_qty, 0) = COALESCE(sell.executed_qty, 0) AND COALESCE(buy.executed_qty, 0) > 0 AND (COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0)) = 0 THEN 'CLOSED'
@@ -30,6 +27,9 @@ AS SELECT fs2.signal_id,
     COALESCE(buy.pending_qty, 0) AS pending_buy_qty,
     COALESCE(sell.executed_qty, 0) AS executed_sell_qty,
     COALESCE(sell.pending_qty, 0) AS pending_sell_qty,
+    COALESCE(open_commands.commandcount, 0) as open_commands_count,
+    COALESCE(close_commands.commandcount, 0) as close_commands_count,
+    COALESCE(pending_commands.commandcount, 0) as pending_commands_count,
     CASE
         WHEN fs2.position_type = 'LONG' THEN buy.avg_price
         ELSE sell.avg_price
@@ -47,26 +47,35 @@ AS SELECT fs2.signal_id,
         ELSE buy.last_order_time
     END AS exit_time
    FROM futures_signal fs2
-   	 LEFT JOIN (SELECT max(id) AS id, signal_id, status, signal_action, count(signal_id) AS commandCount 
-   	 		    FROM futures_signal_command 
-   	 		    WHERE signal_action = 'OPEN'
-			    GROUP BY signal_id, status, signal_action
-			    ORDER BY id DESC LIMIT 1
-   	 	) open_command ON open_command.signal_id = fs2.signal_id
-   	 LEFT JOIN (SELECT max(id) AS id, signal_id, status, signal_action, count(signal_id) AS commandCount 
-   	 		    FROM futures_signal_command 
-   	 		    WHERE signal_action = 'CLOSE'
-			    GROUP BY signal_id, status, signal_action
-			    ORDER BY id DESC LIMIT 1
-   	 	) close_command ON close_command.signal_id = fs2.signal_id
+     LEFT JOIN ( SELECT 
+            futures_signal_command.signal_id,
+            count(futures_signal_command.signal_id) AS commandcount
+           FROM futures_signal_command
+          WHERE futures_signal_command.signal_action = 'OPEN' AND futures_signal_command.status NOT IN ('EXPIRED', 'FAILED')
+          GROUP BY futures_signal_command.signal_id
+         ) open_commands ON open_commands.signal_id = fs2.signal_id
+     LEFT JOIN ( SELECT
+            futures_signal_command.signal_id,
+            count(futures_signal_command.signal_id) AS commandcount
+           FROM futures_signal_command
+          WHERE futures_signal_command.signal_action = 'CLOSE' AND futures_signal_command.status NOT IN ('EXPIRED', 'FAILED')
+          GROUP BY futures_signal_command.signal_id
+         ) close_commands ON close_commands.signal_id = fs2.signal_id
+     LEFT JOIN ( SELECT
+            futures_signal_command.signal_id,
+            count(futures_signal_command.signal_id) AS commandcount
+          FROM futures_signal_command
+          WHERE futures_signal_command.status = 'CREATED'
+          GROUP BY futures_signal_command.signal_id
+         ) pending_commands ON pending_commands.signal_id = fs2.signal_id
      LEFT JOIN ( SELECT signal_order_summary.signal_id,
             signal_order_summary.order_side,
             sum(signal_order_summary.executed_qty) AS executed_qty,
             sum(signal_order_summary.pending_qty) AS pending_qty,
             sum(signal_order_summary.order_count) AS order_count,
             avg(signal_order_summary.avg_price) AS avg_price,
-            min(signal_order_summary.first_order_time) as first_order_time,
-            max(signal_order_summary.last_order_time) as last_order_time
+            min(signal_order_summary.first_order_time) AS first_order_time,
+            max(signal_order_summary.last_order_time) AS last_order_time
            FROM signal_order_summary
           WHERE signal_order_summary.order_side = 'BUY' AND signal_order_summary.executed_qty > 0
           GROUP BY signal_order_summary.order_side, signal_order_summary.signal_id) buy ON buy.signal_id = fs2.signal_id
@@ -76,11 +85,13 @@ AS SELECT fs2.signal_id,
             sum(signal_order_summary.pending_qty) AS pending_qty,
             sum(signal_order_summary.order_count) AS order_count,
             avg(signal_order_summary.avg_price) AS avg_price,
-            min(signal_order_summary.first_order_time) as first_order_time,
-            max(signal_order_summary.last_order_time) as last_order_time
+            min(signal_order_summary.first_order_time) AS first_order_time,
+            max(signal_order_summary.last_order_time) AS last_order_time
            FROM signal_order_summary
           WHERE signal_order_summary.order_side = 'SELL' AND signal_order_summary.executed_qty > 0
           GROUP BY signal_order_summary.order_side, signal_order_summary.signal_id) sell ON sell.signal_id = fs2.signal_id
-      LEFT JOIN (SELECT signal_id, min(strategy_pair_name) AS strategy_pair_name 
-            FROM futures_signal
-            GROUP BY signal_id) fs3 ON fs3.signal_id = fs2.signal_id
+     LEFT JOIN ( SELECT futures_signal.signal_id,
+            min(futures_signal.strategy_pair_name) AS strategy_pair_name
+           FROM futures_signal
+          GROUP BY futures_signal.signal_id) fs3 ON fs3.signal_id = fs2.signal_id
+    ORDER BY signal_id desc;
