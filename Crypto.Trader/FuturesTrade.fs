@@ -208,7 +208,7 @@ let rec executeOrdersForCommand
     asyncResult {
 
         // need to compare with <= rather than 0, because or possible rounding issues due to some exchanges having a LOT size.
-        if maxAttempts > attempt // TODO include slippage condition
+        if attempt > maxAttempts // TODO include slippage condition
         then 
             Log.Information("Done retrying {MaxAttempts} times. Giving up on order {order}, signal command {originalSignalCommand}...", maxAttempts)
             return ordersSoFar
