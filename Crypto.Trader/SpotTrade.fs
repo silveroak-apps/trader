@@ -375,7 +375,4 @@ let processValidSignals getSignalsToBuyOrSell expireSignals getOrdersForSignal g
             Log.Debug ("Found {OldSignalCountThisTick} old signals. Setting to lapsed: {OldBuySignals}. {SignalLapsedStats}", oldBuySignals, lapsedStats)
             do! expireSignals oldBuySignals
 
-        // listen will handle websocket updates, but will maintain state to open only one connection
-        if validSignals |> Seq.length > 0 && placeRealOrders
-        then TradeStatusListener.listen getExchangeOrder saveOrder (Trade.getApiKeyCfg ()) |> ignore
     }
