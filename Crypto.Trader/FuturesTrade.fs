@@ -317,7 +317,7 @@ let private mkTradeAgent
                         let exchangeId = if placeRealOrders then s.ExchangeId else Simulator.ExchangeId
                         let attemptCount = 1
                         let maxAttempts = if s.Action = "OPEN" then 5 else 100
-                        let maxSlippage = 0.15M // %
+                        let maxSlippage = 0.15M // % // unused at the moment
 
                         (*
                         1 find our which exchange to place order
@@ -416,10 +416,11 @@ let processValidSignals
                     | Some agent -> agent.PostAndAsyncReply (fun replyCh -> FuturesTrade (s, placeRealOrders, replyCh))
                     | _ -> raise <| exn "Unexpected error: trade agent is not setup"
                 )
+
         // now we need to 'expire' / invalidate commands that won't be run
         // there are two categories of invalid commands:
         // 1. Too old
-        // 2. A newer command is available (what should we do in this case?)
+        // 2. A newer command is available
 
         // category 1: too old / stale
         let lapsedStats = oldCommands |> Seq.map(fun s -> s.SignalId, DateTime.UtcNow, s.RequestDateTime, (DateTime.UtcNow - s.RequestDateTime).TotalSeconds)
@@ -430,7 +431,7 @@ let processValidSignals
             match result with
             | Result.Error e -> Log.Warning(e, "Error expiring old / stale signal commands. Ignoring...")
             | _ -> ()
-        
+
         // category 2: newer command is available, so these previousCommands are invalid now
         let previousCommands = signalCommands |> Seq.except latestCommands
         let lapsedStats = previousCommands |> Seq.map(fun s -> s.SignalId, DateTime.UtcNow, s.RequestDateTime, (DateTime.UtcNow - s.RequestDateTime).TotalSeconds)
@@ -441,8 +442,4 @@ let processValidSignals
             match result with
             | Result.Error e -> Log.Warning(e, "Error expiring previous / overridden signal commands. Ignoring...")
             | _ -> ()
-
-        // // listen will handle websocket updates, but will maintain state to open only one connection
-        if validCommands |> Seq.length > 0 && placeRealOrders
-        then TradeStatusListener.listen getExchangeOrder saveOrder |> ignore // ugly: TradeStatusListener is currently specific to Binance, but the rest of the module is reasonably abstracted
     }

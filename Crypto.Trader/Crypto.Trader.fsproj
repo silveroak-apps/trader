@@ -8,10 +8,7 @@
     <Compile Include="Types.fs" />
     <Compile Include="Exchanges\Binance\ApiTypes.fs" />
     <Compile Include="Exchanges\Binance\Spot\Trade.fs" />
-    <Compile Include="Exchanges\Binance\Spot\TradeStatusListener.fs" />
-    <Compile Include="Exchanges\Binance\Spot\TradeStatusUpdater.fs" />
     <Compile Include="Exchanges\Binance\Futures\Trade.fs" />
-    <Compile Include="Exchanges\Binance\Futures\TradeStatusListener.fs" />
     <Compile Include="Exchanges\Simulator\Exchange.fs" />
     <Compile Include="FuturesTrade.fs" />
     <Compile Include="SpotTrade.fs" />
