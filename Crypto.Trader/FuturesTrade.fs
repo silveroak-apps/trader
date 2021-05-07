@@ -220,9 +220,6 @@ let rec executeOrdersForCommand
             let executedQtySoFar = getFilledQty ordersSoFar
             let updatedCommand = { signalCommand with Quantity = signalCommand.Quantity - executedQtySoFar }
 
-            // ugly hack for now - save ExchangeOrder _before_ placing order, so that the TradeStatusListener can find it on a websocket update
-            let! _ = saveOrder (toExchangeOrder updatedCommand)
-
             let! exchangeOrder = placeOrderWithRetryOnError exchange updatedCommand
             let! newOrder = saveOrder exchangeOrder
             let updatedOrders = newOrder :: ordersSoFar
