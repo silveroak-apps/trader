@@ -7,7 +7,8 @@ AS SELECT fs2.signal_id,
     fs2.exchange_id,
     fs3.strategy_pair_name,
     CASE
-        WHEN (COALESCE(buy.executed_qty, 0) + COALESCE(sell.executed_qty, 0) = 0) AND (COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0) = 0) AND (COALESCE(open_commands.commandCount, 0) + COALESCE(close_commands.commandCount, 0)) > 0 THEN 'CREATED'
+        WHEN (COALESCE(buy.executed_qty, 0) + COALESCE(sell.executed_qty, 0) = 0) AND (COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0) = 0) AND COALESCE(pending_commands.commandCount, 0) > 0 THEN 'CREATED'
+        WHEN (COALESCE(buy.executed_qty, 0) + COALESCE(sell.executed_qty, 0) = 0) AND (COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0) = 0) AND (COALESCE(open_commands.commandCount, 0) + COALESCE(close_commands.commandCount, 0)) = 0 AND COALESCE(pending_commands.commandCount, 0) = 0 THEN 'INACTIVE'
         WHEN COALESCE(buy.pending_qty, 0) > 0 OR COALESCE(sell.pending_qty, 0) > 0 THEN 'ACTIVE' 
         WHEN (COALESCE(buy.executed_qty, 0) > 0 OR COALESCE(sell.executed_qty, 0) > 0) AND COALESCE(buy.executed_qty, 0) <> COALESCE(sell.executed_qty, 0) THEN 'ACTIVE'
         WHEN COALESCE(buy.executed_qty, 0) = COALESCE(sell.executed_qty, 0) AND COALESCE(buy.executed_qty, 0) > 0 AND COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0) = 0 THEN 'ENDED'
@@ -19,7 +20,8 @@ AS SELECT fs2.signal_id,
         WHEN fs2.position_type = 'LONG' AND COALESCE(sell.pending_qty, 0) > 0 THEN 'PENDING_CLOSE'
         WHEN fs2.position_type = 'SHORT' AND COALESCE(buy.pending_qty, 0) > 0 THEN 'PENDING_CLOSE'
         WHEN fs2.position_type = 'SHORT' AND COALESCE(sell.pending_qty, 0) > 0 THEN 'PENDING_OPEN'
-        WHEN (COALESCE(buy.executed_qty, 0) + COALESCE(sell.executed_qty, 0)) = 0 AND (COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0)) >= 0 THEN 'NOT_YET_OPEN'
+        WHEN (COALESCE(buy.executed_qty, 0) + COALESCE(sell.executed_qty, 0)) = 0 AND (COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0)) = 0 AND (COALESCE(open_commands.commandCount, 0) + COALESCE(close_commands.commandCount, 0)) = 0 AND COALESCE(pending_commands.commandCount, 0) = 0 THEN 'NOT_OPEN'
+        WHEN (COALESCE(buy.executed_qty, 0) + COALESCE(sell.executed_qty, 0)) = 0 AND (COALESCE(buy.pending_qty, 0) + COALESCE(sell.pending_qty, 0)) > 0 THEN 'NOT_YET_OPEN'
         WHEN (COALESCE(buy.executed_qty, 0) + COALESCE(sell.executed_qty, 0)) > 0 THEN 'OPEN'
         ELSE 'UNKOWN'
     END AS position_status,
