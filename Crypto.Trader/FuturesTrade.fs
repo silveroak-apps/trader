@@ -46,7 +46,7 @@ let private findOrderSide positionType signalAction =
     | "SHORT", "DECREASE" -> BUY  |> Ok
     | "SHORT", "CLOSE"    -> BUY  |> Ok
 
-    | _, _                -> Result.Error <| exn (sprintf "Unsupported orderType: %s, signalAction: %s" positionType signalAction)
+    | _, _                -> Result.Error <| exn (sprintf "Unsupported positionType: %s, signalAction: %s" positionType signalAction)
 
 let evaluateSignalStatusUpdate signalAction (exchangeOrder: ExchangeOrder) =
     let hasFilledAny = exchangeOrder.ExecutedQty > 0M
@@ -75,26 +75,29 @@ let determineOrderPrice (exchange: IExchange) (s: FuturesSignalCommandView) (ord
     }
 
 let private toExchangeOrder (signalCommand: FuturesSignalCommandView) = 
-    {
-        ExchangeOrder.CreatedTime = DateTime.UtcNow
-        Id = 0L // to be assigned by the data store
-        Status = "READY"
-        StatusReason = "About to place Order"
-        Symbol = string signalCommand.Symbol
-        Price = signalCommand.Price
-        OriginalQty = signalCommand.Quantity
-        ExchangeOrderIdSecondary = string signalCommand.SignalId
-        SignalId = signalCommand.SignalId
-        UpdatedTime = DateTime.UtcNow
-        ExchangeId = signalCommand.ExchangeId
-        OrderSide = "TBD"
-        LastTradeId = 0L
-        ExchangeOrderId = sprintf "TBD-%s" (DateTimeOffset.UtcNow.ToString("yyyy-MMM-ddTHH:mm:ss.fff")) // for uniqueness in the db
-        ExecutedPrice = 0M // the order is not yet executed - this should be updated by trade status updates
-        ExecutedQty = 0M
-        FeeAmount = 0M // initially we've not executed anything - so no fees yet
-        FeeCurrency = "" // nothing is executed yet. so we dont know what this is.
-    }
+    let orderSide = findOrderSide signalCommand.PositionType signalCommand.Action
+    Result.map (fun os ->
+            {
+                ExchangeOrder.CreatedTime = DateTime.UtcNow
+                Id = 0L // to be assigned by the data store
+                Status = "READY"
+                StatusReason = "About to place Order"
+                Symbol = string signalCommand.Symbol
+                Price = signalCommand.Price
+                OriginalQty = signalCommand.Quantity
+                ExchangeOrderIdSecondary = string signalCommand.SignalId
+                SignalId = signalCommand.SignalId
+                UpdatedTime = DateTime.UtcNow
+                ExchangeId = signalCommand.ExchangeId
+                OrderSide = string os
+                LastTradeId = 0L
+                ExchangeOrderId = sprintf "TBD-%s" (DateTimeOffset.UtcNow.ToString("yyyy-MMM-ddTHH:mm:ss.fff")) // for uniqueness in the db
+                ExecutedPrice = 0M // the order is not yet executed - this should be updated by trade status updates
+                ExecutedQty = 0M
+                FeeAmount = 0M // initially we've not executed anything - so no fees yet
+                FeeCurrency = "" // nothing is executed yet. so we dont know what this is.
+            }
+        ) orderSide
 
 let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) =
     asyncResult {
@@ -137,10 +140,10 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) =
 
         let! o = exchange.PlaceOrder orderInput |> AsyncResult.mapError mapOrderError
 
-        let exo = 
+        let! exo = 
             s
             |> toExchangeOrder            
-            |> updateOrderWith o "Placed order"
+            |> Result.map (updateOrderWith o "Placed order")
 
         return exo
     } |> AsyncResult.catch id
@@ -222,7 +225,7 @@ let rec executeOrdersForCommand
 
             let! exchangeOrder = placeOrderWithRetryOnError exchange updatedCommand
             let! newOrder = saveOrder exchangeOrder
-            let updatedOrders = newOrder :: ordersSoFar
+            Log.Information("Saved new order: {InternalOrderId}. {Order}", newOrder.Id, newOrder)
 
             let _20seconds = 20 * 1000 // millis
             do! Async.Sleep _20seconds
@@ -231,6 +234,7 @@ let rec executeOrdersForCommand
                 OrderQueryInfo.OrderId = OrderId newOrder.ExchangeOrderId
                 Symbol = Symbol newOrder.Symbol
             }
+            Log.Information("Querying order status after waiting... {Query}", orderQuery)
             match! (queryOrderWithRetryOnError exchange orderQuery) with
             | OrderFilled (executedQty, executedPrice) -> 
                 // save filled status in case we didn't get a socket update
@@ -242,12 +246,14 @@ let rec executeOrdersForCommand
                         ExecutedQty = executedQty / 1M<qty>
                         ExecutedPrice = executedPrice / 1M<price>
                 }
-                let! _ = saveOrder filledOrder
-                return updatedOrders
-            | _ -> 
-                Log.Information("Trying to cancel order {ExchangeOrder} (Signal: {SignalId}), because it didn't fill yet.",
+                let! filledOrder' = saveOrder filledOrder
+                Log.Information("Filled order: {ExchangeOrder}", filledOrder')
+                return (filledOrder' :: ordersSoFar)
+            | orderStatus -> 
+                Log.Information("Trying to cancel order {ExchangeOrder} (Signal: {SignalId}), because it didn't fill yet. Current status: {OrderStatus}",
                     newOrder,
-                    newOrder.SignalId)
+                    newOrder.SignalId,
+                    orderStatus)
 
                 do! cancelOrderWithRetryOnError exchange orderQuery
 
@@ -273,11 +279,15 @@ let rec executeOrdersForCommand
                 then
                     Log.Information ("Retrying again - since we didn't fill the original quantity this iteration: Want: {TotalRequiredQty}, FilledSoFar: {FilledQty}",
                         signalCommand.Quantity, executedQty)
-                   
+                    let updatedOrders = exo' :: ordersSoFar
                     let! orders = executeOrdersForCommand exchange saveOrder maxSlippage updatedOrders maxAttempts (attempt + 1) signalCommand 
                     return orders
                 else
-                    return updatedOrders // done, we filled everything!
+                    Log.Information("Looks like we filled everything for order {ExchangeOrder}, for command {SignalCommand}. Signal: {SignalId}",
+                        exo',
+                        signalCommand,
+                        signalCommand.SignalId)
+                    return (exo':: ordersSoFar) // done, looks like we filled everything!
     }
 
 type private TradeAgentCommand = 
