@@ -64,7 +64,9 @@ let determineOrderPrice (exchange: IExchange) (s: FuturesSignalCommandView) (ord
                 // intentionally reduce potential loss due to spread
                 let result =
                     match orderSide, s.PositionType with
-                    | BUY,  "LONG"  -> Result.Ok <| Math.Min(s.Price, orderBook.BidPrice)
+                    | BUY,  "LONG"  -> 
+                        let diff = orderBook.BidPrice - s.Price
+                        Result.Ok <| Math.Min(s.Price, orderBook.BidPrice)
                     | BUY,  "SHORT" -> Result.Ok orderBook.BidPrice
                     | SELL, "LONG"  -> Result.Ok orderBook.AskPrice
                     | SELL, "SHORT" -> Result.Ok <| Math.Max(s.Price, orderBook.AskPrice)
@@ -101,11 +103,6 @@ let private toExchangeOrder (signalCommand: FuturesSignalCommandView) =
 
 let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) =
     asyncResult {
-        // don't pushproperty outside this scope - so the recursive message loop gets it. We dont want that!
-        use _ = LogContext.PushProperty("CommandId", s.Id)
-        use _ = LogContext.PushProperty("SignalId", s.SignalId)
-        use _ = LogContext.PushProperty("ExchangeId", s.ExchangeId)
-
         Log.Information ("Placing an order for command {Command} for signal {SignalId} using exchange {Exchange}", s, s.SignalId, exchange.GetType().Name)
 
         let sym = s.Symbol |> Symbol
@@ -131,10 +128,10 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) =
         let mapOrderError err =
             match err with
             | OrderRejectedError ore ->
-                Log.Error("Error (order rejected by exchange) trying to execute signal command {CommandId}", s.Id)
+                Log.Error("Error (order rejected by exchange) trying to execute signal command {CommandId}: {Error}", s.Id, ore)
                 ore
             | OrderError oe ->
-                Log.Error("Error trying to execute signal command {CommandId}", s.Id)
+                Log.Error("Error trying to execute signal command {CommandId}: {Error}", s.Id, oe)
                 oe
             |> exn
 
@@ -199,9 +196,11 @@ let private getFilledQty (orders: ExchangeOrder seq) =
     then 0M
     else orders |> Seq.sumBy (fun o -> o.ExecutedQty)
 
+
 let rec executeOrdersForCommand
     (exchange: IExchange)
     (saveOrder: ExchangeOrder -> Async<Result<ExchangeOrder, exn>>)
+    (getPositionSize: SignalId -> Async<Result<decimal, exn>>)
     (maxSlippage: decimal)
     (ordersSoFar: ExchangeOrder list)
     (maxAttempts: int) 
@@ -210,18 +209,38 @@ let rec executeOrdersForCommand
 
     asyncResult {
 
+        // don't pushproperty outside this scope - so the recursive message loop gets it. We dont want that!
+        use _ = LogContext.PushProperty("CommandId", signalCommand.Id)
+        use _ = LogContext.PushProperty("SignalId", signalCommand.SignalId)
+        use _ = LogContext.PushProperty("Exchange", exchange.GetType().Name)
+
         // need to compare with <= rather than 0, because or possible rounding issues due to some exchanges having a LOT size.
         if attempt > maxAttempts // TODO include slippage condition
         then 
-            Log.Information("Done retrying {MaxAttempts} times. Giving up on order {order}, signal command {originalSignalCommand}...", maxAttempts)
+            Log.Information("Done retrying {MaxAttempts} times. Giving up on signal command {originalSignalCommand}...",
+                maxAttempts,
+                signalCommand)
             return ordersSoFar
         else
-            Log.Information ("Starting retry/cancel (attempt: {Attempt}/{MaxAttempts}) for command (with updated qty) {Command}, signal {SignalId}", 
+            Log.Information ("Starting executeOrder attempt: {Attempt}/{MaxAttempts} for command {Command}", 
                 attempt, maxAttempts,
-                signalCommand, signalCommand.SignalId)
+                signalCommand)
 
-            let executedQtySoFar = getFilledQty ordersSoFar
-            let updatedCommand = { signalCommand with Quantity = signalCommand.Quantity - executedQtySoFar }
+            let! updatedCommand =
+                // we need to find out how much more to place an order for:
+                asyncResult {
+                    let! openedPosition = getPositionSize (SignalId signalCommand.SignalId)
+                    let cmd = 
+                        match signalCommand.Action with
+                        | "CLOSE" ->
+                            Result.Ok { signalCommand with Quantity = openedPosition } //for now just close the entire position that we have opened
+                        | "OPEN" ->
+                            // check what we attempted in the previous attempts
+                            let executedQtySoFar = getFilledQty ordersSoFar
+                            Ok { signalCommand with Quantity = signalCommand.Quantity - executedQtySoFar }
+                        | x -> Result.Error (exn <| (sprintf "Unknown signal command action: %s" x)) // TODO model this better
+                    return! cmd
+                }
 
             let! exchangeOrder = placeOrderWithRetryOnError exchange updatedCommand
             let! newOrder = saveOrder exchangeOrder
@@ -250,22 +269,32 @@ let rec executeOrdersForCommand
                 Log.Information("Filled order: {ExchangeOrder}", filledOrder')
                 return (filledOrder' :: ordersSoFar)
             | orderStatus -> 
+                let updatedOrder = 
+                    match orderStatus with
+                    | OrderPartiallyFilled (qty, price) ->
+                        {
+                            newOrder with
+                                Status = "PARTIALLY_FILLED"
+                                StatusReason = "Partially filled"
+                                ExecutedQty = qty / 1M<qty>
+                                ExecutedPrice = price / 1M<price>
+                        }
+                    | _ -> newOrder
+
                 Log.Information("Trying to cancel order {ExchangeOrder} (Signal: {SignalId}), because it didn't fill yet. Current status: {OrderStatus}",
-                    newOrder,
-                    newOrder.SignalId,
+                    updatedOrder,
+                    updatedOrder.SignalId,
                     orderStatus)
 
                 do! cancelOrderWithRetryOnError exchange orderQuery
 
-                // it looks like some websockets like Binance don't seem to be sending an update.
-                // in any case, we better save the updated order here
                 // we need to query again, so we get a potentially updated executedQty
                 Log.Information ("Cancel order ({OrderId}) successful, for signal {SignalId}. Querying latest status...",
                     newOrder.Id, newOrder.SignalId)
 
                 let! (executedQty, executedPrice) = getExecutedQtyForOrder exchange orderQuery (string signalCommand.SignalId)
                 let cancelledOrder = {
-                    newOrder with
+                    updatedOrder with
                         Status = "CANCELED"
                         StatusReason = "Fill timed out."
                         UpdatedTime = DateTime.UtcNow
@@ -275,19 +304,28 @@ let rec executeOrdersForCommand
                 let! exo' = saveOrder cancelledOrder
                 Log.Information ("Saved order after cancellation: {CancelledOrder}", exo')
 
-                if signalCommand.Quantity < executedQty / 1M<qty>
+                if executedQty / 1M<qty> < signalCommand.Quantity
                 then
                     Log.Information ("Retrying again - since we didn't fill the original quantity this iteration: Want: {TotalRequiredQty}, FilledSoFar: {FilledQty}",
                         signalCommand.Quantity, executedQty)
                     let updatedOrders = exo' :: ordersSoFar
-                    let! orders = executeOrdersForCommand exchange saveOrder maxSlippage updatedOrders maxAttempts (attempt + 1) signalCommand 
+                    let! orders = 
+                        executeOrdersForCommand 
+                            exchange 
+                            saveOrder 
+                            getPositionSize
+                            maxSlippage
+                            updatedOrders
+                            maxAttempts (attempt + 1)
+                            signalCommand
+
                     return orders
                 else
                     Log.Information("Looks like we filled everything for order {ExchangeOrder}, for command {SignalCommand}. Signal: {SignalId}",
-                        exo',
+                        updatedOrder,
                         signalCommand,
                         signalCommand.SignalId)
-                    return (exo':: ordersSoFar) // done, looks like we filled everything!
+                    return (updatedOrder:: ordersSoFar) // done, looks like we filled everything!
     }
 
 type private TradeAgentCommand = 
@@ -296,6 +334,7 @@ type private TradeAgentCommand =
 // serialising calls to placeOrder to be safe
 let private mkTradeAgent 
     (saveOrder: ExchangeOrder -> Async<Result<ExchangeOrder, exn>>)
+    (getPositionSize: SignalId -> Async<Result<decimal, exn>>)
     (completeSignalCommands: SignalCommandId seq -> SignalCommandStatus -> Async<Result<unit, exn>>) =
     // safeguard against placing an order for the same signal twice - during the app's lifetime:
     let commandsProcessed = Dictionary<int64, DateTimeOffset>()
@@ -344,7 +383,7 @@ let private mkTradeAgent
                         let! result =
                             asyncResult {
                                 let! exchange = (getExchange exchangeId |> Result.mapError exn)
-                                let! orders = executeOrdersForCommand exchange saveOrder maxSlippage [] maxAttempts attemptCount s
+                                let! orders = executeOrdersForCommand exchange saveOrder getPositionSize maxSlippage [] maxAttempts attemptCount s
                                 let executedQty = getFilledQty orders
                                 let signalCommandStatus =
                                     if executedQty > 0M
@@ -383,6 +422,7 @@ let processValidSignals
     (completeSignalCommands: SignalCommandId seq -> SignalCommandStatus -> Async<Result<unit, exn>>)
     (getExchangeOrder: int64 -> Async<ExchangeOrder option>)
     (saveOrder: ExchangeOrder -> TradeMode -> Async<Result<int64, exn>>)
+    (getPositionSize: SignalId -> Async<Result<decimal, exn>>)
     (placeRealOrders: bool) =
 
     let saveOrder' exo = 
@@ -412,7 +452,7 @@ let processValidSignals
 
         // ugly mutable for now :/
         if tradeAgent = None then
-            tradeAgent <- Some <| mkTradeAgent saveOrder' completeSignalCommands
+            tradeAgent <- Some <| mkTradeAgent saveOrder' getPositionSize completeSignalCommands
 
         do! 
             validCommands
@@ -432,7 +472,10 @@ let processValidSignals
         // category 1: too old / stale
         let lapsedStats = oldCommands |> Seq.map(fun s -> s.SignalId, DateTime.UtcNow, s.RequestDateTime, (DateTime.UtcNow - s.RequestDateTime).TotalSeconds)
         if not (oldCommands |> Seq.isEmpty) then
-            Log.Debug ("Found {SignalCountThisTick} old signals. Setting to lapsed: {SignalCommands}. {SignalLapsedStats}", oldCommands, lapsedStats)
+            Log.Debug ("Found {SignalCountThisTick} old signals. Lapsted stats: {SignalLapsedStats}. Setting to lapsed: {SignalCommands}",
+                 oldCommands |> Seq.length,
+                 lapsedStats,
+                 oldCommands)
             let cmdIds = oldCommands |> Seq.map(fun s -> SignalCommandId s.Id)
             let! result =  completeSignalCommands cmdIds SignalCommandStatus.EXPIRED
             match result with
@@ -443,7 +486,10 @@ let processValidSignals
         let previousCommands = signalCommands |> Seq.except latestCommands
         let lapsedStats = previousCommands |> Seq.map(fun s -> s.SignalId, DateTime.UtcNow, s.RequestDateTime, (DateTime.UtcNow - s.RequestDateTime).TotalSeconds)
         if not (previousCommands |> Seq.isEmpty) then
-            Log.Debug ("Found {SignalCountThisTick} overridden signals. Setting to lapsed: {SignalCommands}. {SignalLapsedStats}", previousCommands, lapsedStats)
+            Log.Debug ("Found {SignalCountThisTick} overridden signals. Lapsed stats: {SignalLapsedStats}. Setting to lapsed: {SignalCommands}.",
+                previousCommands |> Seq.length, 
+                lapsedStats,
+                previousCommands)
             let cmdIds = previousCommands |> Seq.map(fun s -> SignalCommandId s.Id)
             let! result =  completeSignalCommands cmdIds SignalCommandStatus.EXPIRED
             match result with

@@ -159,6 +159,26 @@ let private getOrdersForSignal' (signalId: int64) =
                 )
     }
 
+let private getPositionSize' (SignalId signalId) =
+    async {
+        let positionSql = "
+            SELECT
+            	CASE
+            		WHEN position_type = 'LONG' THEN coalesce (executed_buy_qty, 0) - coalesce (executed_sell_qty, 0)
+            		WHEN position_type = 'SHORT' THEN coalesce (executed_sell_qty, 0) - coalesce (executed_buy_qty, 0)
+            		ELSE -1
+            	END AS position_size
+            FROM futures_positions 
+            WHERE signal_id = @SignalId
+        "
+        let! result = getWithParam<decimal> positionSql ({ SignalIdParam.SignalId = signalId } :> obj)
+        let positionSize =
+            if Seq.isEmpty result
+            then -1M
+            else Seq.head result
+        return positionSize
+    }
+
 let private getExchangeOrder' (id: int64) = 
     let getOrderSql = 
         "
@@ -283,7 +303,8 @@ type private DbAgentCommand =
     // Futures only
     | GetFuturesSignalCommands of AsyncReplyChannel<FuturesSignalCommandView seq>
     | SetSignalCommandComplete  of SignalCommandId seq * SignalCommandStatus * AsyncReplyChannel<unit>
-
+    | GetPositionSize of SignalId * AsyncReplyChannel<decimal>
+    
     // Common 
     // Save order handles signal updates too :/
     | SaveOrder of ExchangeOrder  * TradeMode * AsyncReplyChannel<int64>
@@ -334,6 +355,10 @@ let private dbAgent =
                 | GetTradedSymbols (exchangeId, replyCh) ->
                     let! symbols = getTradedSymbols' exchangeId
                     replyCh.Reply symbols
+
+                | GetPositionSize (signalId, replyCh) ->
+                    let! positionSize = getPositionSize' |> withRetry' 5 signalId
+                    replyCh.Reply positionSize
             with 
                 | e ->
                     Log.Error (e, "Error handling db command: {DbCommand}", msg)
@@ -374,4 +399,12 @@ let setSignalCommandsComplete commandIds commandStatus =
         with
         | e -> return Result.Error e
     }
-    
+
+let getPositionSize (signalId: SignalId) = 
+    async {
+        try
+            let! result = dbAgent.PostAndAsyncReply (fun replyCh -> GetPositionSize (signalId, replyCh))
+            return Ok result
+        with
+            | e -> return Result.Error e
+    }

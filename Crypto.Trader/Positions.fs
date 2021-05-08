@@ -92,8 +92,13 @@ let placeOrders (signalCommand: FuturesSignalCommandView) : Async<Result<unit, e
                 let! id = Db.saveOrder o TradeMode.FUTURES
                 return { o with Id = id }
             }
+        let getPositionSize sId = 
+            asyncResult {
+                return 0M // TODO
+            }
+        
         let! exchange = (Futures.getExchange signalCommand.ExchangeId |> Result.mapError exn)
-        let! _ = Futures.executeOrdersForCommand exchange saveOrder maxSlippage [] maxAttempts attemptCount signalCommand
+        let! _ = Futures.executeOrdersForCommand exchange saveOrder getPositionSize maxSlippage [] maxAttempts attemptCount signalCommand
         return ()
     }
 

@@ -46,7 +46,8 @@ let main (argv: string[]) =
                             Db.getFuturesSignalCommands
                             Db.setSignalCommandsComplete
                             Db.getExchangeOrder
-                            Db.saveOrder)
+                            Db.saveOrder
+                            Db.getPositionSize)
                             placeRealOrders |> Async.Start
 
         // Log.Information ("Starting spot trader...")

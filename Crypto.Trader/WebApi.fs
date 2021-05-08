@@ -24,6 +24,7 @@ let private makeDbSignalHandler placeRealOrders : HttpHandler =
                     Db.setSignalCommandsComplete
                     Db.getExchangeOrder
                     Db.saveOrder
+                    Db.getPositionSize
                     placeRealOrders |> Async.StartAsTask |> ignore
 
                 Trade.Spot.processValidSignals 
