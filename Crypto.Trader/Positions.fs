@@ -84,6 +84,7 @@ let coinMSymbols =
 let placeOrders (signalCommand: FuturesSignalCommandView) : Async<Result<unit, exn>> =
     asyncResult {
         //TODO fix some hardcoded values
+        let cancellationDelaySeconds = 30
         let maxSlippage = 0.15m // not really used at the moment
         let maxAttempts = 3
         let attemptCount = 1
@@ -98,7 +99,7 @@ let placeOrders (signalCommand: FuturesSignalCommandView) : Async<Result<unit, e
             }
         
         let! exchange = (Futures.getExchange signalCommand.ExchangeId |> Result.mapError exn)
-        let! _ = Futures.executeOrdersForCommand exchange saveOrder getPositionSize maxSlippage [] maxAttempts attemptCount signalCommand
+        let! _ = Futures.executeOrdersForCommand exchange saveOrder getPositionSize maxSlippage [] cancellationDelaySeconds maxAttempts attemptCount signalCommand
         return ()
     }
 

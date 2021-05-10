@@ -145,8 +145,8 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) =
         return exo
     } |> AsyncResult.catch id
 
-let private  retryCount = 3
-let private delay = TimeSpan.FromSeconds(0.5)
+let private  retryCount = 10
+let private delay = TimeSpan.FromSeconds(1.0)
 
 let private placeOrderWithRetryOnError (exchange: IExchange) (signalCmd: FuturesSignalCommandView) =
     // retry 'retryCount' times, in quick succession if there is an error placing an order
@@ -203,6 +203,7 @@ let rec executeOrdersForCommand
     (getPositionSize: SignalId -> Async<Result<decimal, exn>>)
     (maxSlippage: decimal)
     (ordersSoFar: ExchangeOrder list)
+    (cancellationDelaySeconds: int)
     (maxAttempts: int) 
     (attempt: int)
     (signalCommand: FuturesSignalCommandView) =
@@ -246,8 +247,9 @@ let rec executeOrdersForCommand
             let! newOrder = saveOrder exchangeOrder
             Log.Information("Saved new order: {InternalOrderId}. {Order}", newOrder.Id, newOrder)
 
-            let _20seconds = 20 * 1000 // millis
-            do! Async.Sleep _20seconds
+            Log.Information("Waiting {CancellationDelaySeconds} seconds before querying and cancelling if needed.", cancellationDelaySeconds)
+            let _nseconds = cancellationDelaySeconds * 1000 // millis
+            do! Async.Sleep _nseconds
 
             let orderQuery = {
                 OrderQueryInfo.OrderId = OrderId newOrder.ExchangeOrderId
@@ -316,6 +318,7 @@ let rec executeOrdersForCommand
                             getPositionSize
                             maxSlippage
                             updatedOrders
+                            cancellationDelaySeconds
                             maxAttempts (attempt + 1)
                             signalCommand
 
@@ -362,7 +365,8 @@ let private mkTradeAgent
 
                         let exchangeId = if placeRealOrders then s.ExchangeId else Simulator.ExchangeId
                         let attemptCount = 1
-                        let maxAttempts = if s.Action = "OPEN" then 5 else 100
+                        let maxAttempts = if s.Action = "OPEN" then 1 else 100
+                        let cancellationDelay = if s.Action = "OPEN" then 100 else 30 // seconds
                         let maxSlippage = 0.15M // % // unused at the moment
 
                         (*
@@ -383,7 +387,7 @@ let private mkTradeAgent
                         let! result =
                             asyncResult {
                                 let! exchange = (getExchange exchangeId |> Result.mapError exn)
-                                let! orders = executeOrdersForCommand exchange saveOrder getPositionSize maxSlippage [] maxAttempts attemptCount s
+                                let! orders = executeOrdersForCommand exchange saveOrder getPositionSize maxSlippage [] cancellationDelay maxAttempts attemptCount s
                                 let executedQty = getFilledQty orders
                                 let signalCommandStatus =
                                     if executedQty > 0M
