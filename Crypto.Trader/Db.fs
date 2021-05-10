@@ -239,7 +239,7 @@ let private saveOrderAndSignal (b: ExchangeOrder) (signalUpdates: seq<string * o
         SET
             status                      = @Status,
             status_reason               = @StatusReason,
-            executed_price              = @Price,
+            executed_price              = @ExecutedPrice,
             executed_qty                = @ExecutedQty,
             fee_currency                = @FeeCurrency,
             fee_amount                  = @FeeAmount,
