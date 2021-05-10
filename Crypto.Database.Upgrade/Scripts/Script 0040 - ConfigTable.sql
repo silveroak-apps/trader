@@ -5,3 +5,5 @@ create table configs (
 );
 
 INSERT INTO configs (name, json_value) VALUES ('contracts', '{ "configuration": [{"key": "BNBUSD_PERP","value": "100 "},{"key": "BTCUSD_PERP","value": "10"},{"key": "ETHUSD_PERP","value": "100"},{"key": "DOTUSD_PERP","value": "100"},{"key": "LINKUSDT","value": "100"},{"key": "ADAUSDT","value": "100"},{"key": "DOGEUSDT","value": "100"}]}');
+
+INSERT INTO configs (name, json_value) VALUES ('contractsMultiplier', '{ "configuration": [{"key": "BNBUSD_PERP","value": "1 "},{"key": "BTCUSD_PERP","value": "1"},{"key": "ETHUSD_PERP","value": "1"},{"key": "DOTUSD_PERP","value": "1"},{"key": "LINKUSDT","value": "1"},{"key": "ADAUSDT","value": "1"},{"key": "DOGEUSDT","value": "1"}]}');
