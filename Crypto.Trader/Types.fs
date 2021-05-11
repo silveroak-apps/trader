@@ -42,8 +42,16 @@ with
         | OrderFilled _ -> "FILLED"
         | OrderPartiallyFilled _ -> "PARTIALLY_FILLED"
         | OrderCancelled _ -> "CANCELED"
-        | OrderQueryFailed _ -> "QUERY_FAILED"
-    
+        | OrderQueryFailed _ -> "QUERY_FAILED"    
+
+    member this.Description () =
+        match this with
+        | OrderNew  -> "NEW"
+        | OrderFilled (execQty, execPrice) -> sprintf "FILLED: : ExecutedQty: %M, ExecutedPrice; %M" (execQty / 1M<qty>) (execPrice / 1M<price>)
+        | OrderPartiallyFilled (execQty, execPrice) -> sprintf "PARTIALLY_FILLED: ExecutedQty: %M, ExecutedPrice; %M" (execQty / 1M<qty>) (execPrice / 1M<price>)
+        | OrderCancelled (execQty, execPrice) -> sprintf "CANCELED: ExecutedQty: %M, ExecutedPrice; %M" (execQty / 1M<qty>) (execPrice / 1M<price>)
+        | OrderQueryFailed s -> sprintf "QUERY_FAILED: %s" s
+
     static member op_Implicit s : string = s.ToString()
 
 type OrderError = 
@@ -119,5 +127,5 @@ with
 type IExchange = 
     abstract member PlaceOrder : OrderInputInfo -> Async<Result<OrderInfo, OrderError>>
     abstract member QueryOrder : OrderQueryInfo -> Async<OrderStatus>
-    abstract member CancelOrder : OrderQueryInfo -> Async<Result<unit, string>>
-    abstract member GetOrderBookCurrentPrice : string -> Async<OrderBookTickerInfo option>
+    abstract member CancelOrder : OrderQueryInfo -> Async<Result<bool, string>>
+    abstract member GetOrderBookCurrentPrice : string -> Async<Result<OrderBookTickerInfo, string>>

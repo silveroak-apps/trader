@@ -41,7 +41,7 @@ let getBaseClient () =
         opts
 
     let binanceOptions = new BinanceClient(options)
-    Log.Information("Using Binance URLs: coin-m = {FuturesCoinMBaseUrl}, usdt = {FuturesUsdtBaseUrl}", 
+    Log.Verbose("Using Binance URLs: coin-m = {FuturesCoinMBaseUrl}, usdt = {FuturesUsdtBaseUrl}", 
         options.BaseAddressCoinFutures, options.BaseAddressUsdtFutures)
 
     binanceOptions
@@ -70,18 +70,25 @@ let private getClient futuresMode =
     | USDT -> c.FuturesUsdt.Order :> IBinanceClientFuturesOrders
     | COINM  -> c.FuturesCoin.Order :> IBinanceClientFuturesOrders
 
+// A bit ugly: the library we're using seems to not unify the types for PlacedOrder vs Order :/
+// So we do it ourselves
+let mapOrderStatus 
+    (order: {| 
+                Status: Binance.Net.Enums.OrderStatus
+                ExecutedQuantity: decimal
+                AvgPrice: decimal
+            |}
+    ) =
+    match order.Status with
+    | Enums.OrderStatus.New             -> OrderNew
+    | Enums.OrderStatus.Canceled        -> OrderCancelled (Qty order.ExecutedQuantity, Price order.AvgPrice)
+    | Enums.OrderStatus.Expired         -> OrderCancelled (Qty 0M, Price 0M)
+    | Enums.OrderStatus.Filled          -> OrderFilled (Qty order.ExecutedQuantity, Price order.AvgPrice)
+    | Enums.OrderStatus.PartiallyFilled -> OrderPartiallyFilled(Qty order.ExecutedQuantity, Price order.AvgPrice)
+    | Enums.OrderStatus.Rejected        -> OrderCancelled (Qty 0M, Price 0M)
+    | status                            -> OrderQueryFailed (sprintf "Unrecognised order status: %A" status)
+
 let private toOrderInfoResult (orderData: BinanceFuturesPlacedOrder) =
-
-    let orderStatus = 
-        match orderData.Status with
-        | Enums.OrderStatus.New             -> OrderNew
-        | Enums.OrderStatus.Canceled        -> OrderCancelled (Qty orderData.ExecutedQuantity, Price orderData.AvgPrice)
-        | Enums.OrderStatus.Expired         -> OrderCancelled (Qty 0M, Price 0M)
-        | Enums.OrderStatus.Filled          -> OrderFilled (Qty orderData.ExecutedQuantity, Price orderData.AvgPrice)
-        | Enums.OrderStatus.PartiallyFilled -> OrderPartiallyFilled(Qty orderData.ExecutedQuantity, Price orderData.AvgPrice)
-        | Enums.OrderStatus.Rejected        -> OrderCancelled (Qty 0M, Price 0M)
-        | _                                 -> OrderQueryFailed(sprintf "Unrecognised order status: %A" orderData.Status)
-
     {
         OrderInfo.OrderId = OrderId (string orderData.OrderId)
         ClientOrderId = ClientOrderId orderData.ClientOrderId
@@ -90,7 +97,11 @@ let private toOrderInfoResult (orderData: BinanceFuturesPlacedOrder) =
         Quantity = Qty orderData.OriginalQuantity
         Price = Price orderData.AvgPrice
         Symbol = Symbol orderData.Symbol
-        Status = orderStatus
+        Status = 
+            mapOrderStatus {| 
+                                Status = orderData.Status
+                                ExecutedQuantity = orderData.ExecutedQuantity
+                                AvgPrice = orderData.AvgPrice |}
     } |> Ok
 
 let private getFuturesMode (symbol: string) =
@@ -142,6 +153,32 @@ let private placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>
             if orderResponse.Success
             then toOrderInfoResult orderResponse.Data
             else 
+// TODO: We might need to handle some errors that can't be retried
+// and we need to indicate to the caller that they need to change the inputs
+(* for example:
+-2018 BALANCE_NOT_SUFFICIENT
+    Balance is insufficient.
+-2019 MARGIN_NOT_SUFFICIEN
+    Margin is insufficient.
+-2020 UNABLE_TO_FILL
+    Unable to fill.
+-2021 ORDER_WOULD_IMMEDIATELY_TRIGGER
+    Order would immediately trigger.
+-2022 REDUCE_ONLY_REJECT
+    ReduceOnly Order is rejected.
+-2023 USER_IN_LIQUIDATION
+    User in liquidation mode now.
+-2024 POSITION_NOT_SUFFICIENT
+    Position is not sufficient.
+-2025 MAX_OPEN_ORDER_EXCEEDED
+    Reach max open order limit.
+-2026 REDUCE_ONLY_ORDER_TYPE_NOT_SUPPORTED
+    This OrderType is not supported when reduceOnly.
+-2027 MAX_LEVERAGE_RATIO
+    Exceeded the maximum allowable position at current leverage.
+-2028 MIN_LEVERAGE_RATIO
+    Leverage is smaller than permitted: insufficient margin balance.
+*) 
                 Error(OrderError(sprintf "%A: %s" orderResponse.Error.Code orderResponse.Error.Message))
         return result
     }
@@ -158,16 +195,10 @@ let private queryOrderStatus (o: OrderQueryInfo) =
         if orderResponse.Success
         then 
             let order = orderResponse.Data
-            let orderStatus = 
-                match order.Status with
-                | Enums.OrderStatus.New             -> OrderNew
-                | Enums.OrderStatus.Canceled        -> OrderCancelled (Qty order.ExecutedQuantity, Price order.AvgPrice)
-                | Enums.OrderStatus.Expired         -> OrderCancelled (Qty 0M, Price 0M)
-                | Enums.OrderStatus.Filled          -> OrderFilled (Qty order.ExecutedQuantity, Price order.AvgPrice)
-                | Enums.OrderStatus.PartiallyFilled -> OrderPartiallyFilled(Qty order.ExecutedQuantity, Price order.AvgPrice)
-                | Enums.OrderStatus.Rejected        -> OrderCancelled (Qty 0M, Price 0M)
-                | _                                 -> OrderQueryFailed(sprintf "Unrecognised order status: %A" order.Status)
-            return orderStatus
+            return mapOrderStatus {| 
+                                    Status = order.Status
+                                    ExecutedQuantity = order.ExecutedQuantity
+                                    AvgPrice = order.AvgPrice |}
         else
             return OrderQueryFailed (sprintf "%A: %s" orderResponse.Error.Code orderResponse.Error.Message)
     }
@@ -183,7 +214,9 @@ let private cancelOrder (o: OrderQueryInfo) =
         let! cancelResponse = client.CancelOrderAsync (symbol, orderId) |> Async.AwaitTask
         return 
             if cancelResponse.Success
-            then Ok ()
+            then Ok true
+            elif cancelResponse.Error.Code.GetValueOrDefault() = -2011 // Unknown order sent (cancel was rejected: happens when order was already filled)
+            then Ok false
             else Error (sprintf "%A: %s" cancelResponse.Error.Code cancelResponse.Error.Message)
     }
 
@@ -198,10 +231,10 @@ let private getOrderBookCurrentPrice (Symbol s) =
         | USDT ->
             let! bookResponse = client.FuturesUsdt.Market.GetBookPricesAsync(s) |> Async.AwaitTask
             if not bookResponse.Success
-            then Log.Error ("Error getting orderbook from Binance futures: {@Error}", bookResponse.Error)
-            return
-                if bookResponse.Success
-                then 
+            then 
+                return Result.Error (sprintf "Error getting orderbook: %A: %s" bookResponse.Error.Code bookResponse.Error.Message)
+            else
+                return
                     bookResponse.Data
                     |> Seq.tryHead
                     |> Option.map (fun o -> 
@@ -212,15 +245,19 @@ let private getOrderBookCurrentPrice (Symbol s) =
                                         BidQty   = o.BestBidQuantity
                                         Symbol   = s
                                     })
-                else None
+                    |> (fun ob ->
+                            match ob with
+                            | Some v -> Result.Ok v
+                            | None -> Result.Error "No orderbook data found"
+                        ) 
 
         | COINM ->
             let! bookResponse = client.FuturesCoin.Market.GetBookPricesAsync(s) |> Async.AwaitTask
             if not bookResponse.Success
-            then Log.Error ("Error getting orderbook from Binance futures: {@Error}", bookResponse.Error)
-            return
-                if bookResponse.Success
-                then 
+            then 
+                return Result.Error (sprintf "Error getting orderbook: %A: %s" bookResponse.Error.Code bookResponse.Error.Message)
+            else 
+                return
                     bookResponse.Data
                     |> Seq.tryHead
                     |> Option.map (fun o -> 
@@ -231,7 +268,11 @@ let private getOrderBookCurrentPrice (Symbol s) =
                                         BidQty   = o.BestBidQuantity
                                         Symbol   = s
                                     })
-                else None
+                    |> (fun ob ->
+                            match ob with
+                            | Some v -> Result.Ok v
+                            | None -> Result.Error "No orderbook data found"
+                        ) 
     }
 
 let getExchange() = {

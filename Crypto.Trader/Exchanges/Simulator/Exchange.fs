@@ -56,7 +56,7 @@ module Exchange =
                     return OrderPartiallyFilled(0M<qty>, 0M<price>) // will this work?
                 }
             member __.CancelOrder _ = async {
-                    return Ok()
+                    return Ok true
                 }
             member __.GetOrderBookCurrentPrice s = innerExchange.GetOrderBookCurrentPrice s
         }

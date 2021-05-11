@@ -56,27 +56,24 @@ let evaluateSignalStatusUpdate signalAction (exchangeOrder: ExchangeOrder) =
     | _, _          -> "" // no change
 
 let determineOrderPrice (exchange: IExchange) (s: FuturesSignalCommandView) (orderSide: OrderSide) = 
-    async {
-        try
-            match! exchange.GetOrderBookCurrentPrice s.Symbol with
-            | None -> return (Result.Error (exn <| sprintf "Could not get latest orderbook price before placing order for %s" s.Symbol))
-            | Some orderBook ->
-                // intentionally reduce potential loss due to spread
-                let result =
-                    match orderSide, s.PositionType with
-                    | BUY,  "LONG"  -> 
-                        let diff = orderBook.BidPrice - s.Price
-                        Result.Ok <| Math.Min(s.Price, orderBook.BidPrice)
-                    | BUY,  "SHORT" -> Result.Ok orderBook.BidPrice
-                    | SELL, "LONG"  -> Result.Ok orderBook.AskPrice
-                    | SELL, "SHORT" -> Result.Ok <| Math.Max(s.Price, orderBook.AskPrice)
-                    | _             -> Result.Error (exn <| sprintf "Unexpected position type value: '%s' trying to determine order price" s.PositionType)
-                return result
-        with
-        | e -> return (Result.Error e)
-    }
+    asyncResult {
+        let! orderBook = exchange.GetOrderBookCurrentPrice s.Symbol
+        // reduce potential loss due to spread
+        let result =
+            match orderSide, s.PositionType with
+            | BUY,  "LONG"  -> 
+                let diff = orderBook.BidPrice - s.Price
+                Math.Min(s.Price, orderBook.BidPrice)
+            | BUY,  "SHORT" -> orderBook.BidPrice
+            | SELL, "LONG"  -> orderBook.AskPrice
+            | SELL, "SHORT" -> Math.Max(s.Price, orderBook.AskPrice)
+            | _             -> raise (exn <| sprintf "Unexpected position type value: '%s' trying to determine order price" s.PositionType)
+        return result
+    } 
+    |> AsyncResult.mapError exn
+    |> AsyncResult.catch id
 
-let private toExchangeOrder (signalCommand: FuturesSignalCommandView) = 
+let toExchangeOrder (signalCommand: FuturesSignalCommandView) = 
     let orderSide = findOrderSide signalCommand.PositionType signalCommand.Action
     Result.map (fun os ->
             {
@@ -125,6 +122,7 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) =
             OrderType = OrderType.LIMIT
         }
 
+        // TODO: Review this flow and see if we need to indicate that a 'rejected' order can't be simply retried
         let mapOrderError err =
             match err with
             | OrderRejectedError ore ->
@@ -145,15 +143,18 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) =
         return exo
     } |> AsyncResult.catch id
 
-let private  retryCount = 10
+let private retryCount = 10
 let private delay = TimeSpan.FromSeconds(1.0)
 
-let private placeOrderWithRetryOnError (exchange: IExchange) (signalCmd: FuturesSignalCommandView) =
+// TODO: we need to start identifying what sort of things can be retried, and what can't
+// eg. rejected orders won't work unless the inputs are changed
+
+let placeOrderWithRetryOnError (exchange: IExchange) (signalCmd: FuturesSignalCommandView) =
     // retry 'retryCount' times, in quick succession if there is an error placing an order
     let placeOrder' = placeOrder exchange
     placeOrder' |> withRetryOnErrorResult retryCount delay signalCmd
 
-let private queryOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo) = 
+let queryOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo) = 
     let queryOrder () =
         async {
             try
@@ -164,38 +165,64 @@ let private queryOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQ
         }
     queryOrder |> withRetryOnErrorResult retryCount delay ()
 
-let private cancelOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo) =
+let cancelOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo) =
     let cancelOrder () =
-        async {
-            try
-                return! (exchange.CancelOrder orderQuery) |> AsyncResult.mapError exn
-            with
-            | ex -> return (Result.Error ex)
-        }
+        exchange.CancelOrder orderQuery
+        |> AsyncResult.mapError exn
+        |> AsyncResult.catch id
     cancelOrder |> withRetryOnErrorResult retryCount delay ()
 
-let private getExecutedQtyForOrder (exchange: IExchange) (orderQuery: OrderQueryInfo) (signalId: string) = 
-    async {
-        match! queryOrderWithRetryOnError exchange orderQuery with
-        | Ok (OrderCancelled (q, p)) -> return Result.Ok (q, p) // we still expect this to return some executed_qty value, if anything was executed
-        | Ok (OrderPartiallyFilled (q, p)) -> return Result.Ok (q, p)
-        | Ok (OrderFilled (q, p)) -> return Result.Ok (q, p)
-        | Ok OrderNew -> 
-            return Result.Ok (Qty 0M, Price 0M)
-        | Ok (OrderQueryFailed s) -> return Result.Error (exn s)
-        | Result.Error exn ->
-            Log.Warning (exn, "Order query failed for order {ExchangeOrderId} (Signal {SignalId}): {QueryFailReason}",
-                orderQuery.OrderId,
-                signalId,
-                exn.Message)
-            return Result.Error exn
-    }
+let private getLatestOrderState exchange order orderQuery =
+    let waitMillis = 500.0
+    let maxAttempts = 20 // with exponential backoff, this will take us upto a wait of 6 days!
+    let attempt = 1
+    
+    let rec getLatestOrderStateWithBackOff waitMillis attempt exchange order orderQuery =
+        asyncResult {
+            let! orderStatus = queryOrderWithRetryOnError exchange orderQuery
+            match orderStatus with
+            | OrderFilled (executedQty, executedPrice) ->
+                return {
+                    order with
+                        Status = string orderStatus
+                        StatusReason = "Order filled"
+                        UpdatedTime = DateTime.UtcNow
+                        ExecutedQty = executedQty / 1M<qty>
+                        ExecutedPrice = executedPrice / 1M<price>
+                }
+            | OrderPartiallyFilled (qty, price) ->
+                return {
+                    order with
+                        Status = string orderStatus
+                        StatusReason = "Partially filled"
+                        ExecutedQty = qty / 1M<qty>
+                        ExecutedPrice = price / 1M<price>
+                }
+            | OrderCancelled (qty, price) ->
+                return {
+                    order with
+                        Status = string orderStatus
+                        StatusReason = "Fill timed out"
+                        ExecutedQty = qty / 1M<qty>
+                        ExecutedPrice = price / 1M<price>
+                }
+            | OrderQueryFailed s ->
+                Log.Warning ("Order query failed: {Error} Trying again...", s)
+                if attempt > maxAttempts
+                then return order
+                else 
+                    do! Async.Sleep (TimeSpan.FromMilliseconds(waitMillis))
+                    let waitMillis' = waitMillis * Math.Pow(2.0, float attempt)
+                    return! getLatestOrderStateWithBackOff waitMillis' (attempt + 1) exchange order orderQuery
+            | _ -> return order
+        }
 
-let private getFilledQty (orders: ExchangeOrder seq) = 
+    getLatestOrderStateWithBackOff waitMillis attempt exchange order orderQuery
+    
+let getFilledQty (orders: ExchangeOrder seq) = 
     if Seq.isEmpty orders
     then 0M
     else orders |> Seq.sumBy (fun o -> o.ExecutedQty)
-
 
 let rec executeOrdersForCommand
     (exchange: IExchange)
@@ -227,8 +254,8 @@ let rec executeOrdersForCommand
                 attempt, maxAttempts,
                 signalCommand)
 
-            let! updatedCommand =
-                // we need to find out how much more to place an order for:
+            let! commandWithRemainingQty =
+                // we need to find out how much more qty to place an order for:
                 asyncResult {
                     let! openedPosition = getPositionSize (SignalId signalCommand.SignalId)
                     let cmd = 
@@ -243,7 +270,7 @@ let rec executeOrdersForCommand
                     return! cmd
                 }
 
-            let! exchangeOrder = placeOrderWithRetryOnError exchange updatedCommand
+            let! exchangeOrder = placeOrderWithRetryOnError exchange commandWithRemainingQty
             let! newOrder = saveOrder exchangeOrder
             Log.Information("Saved new order: {InternalOrderId}. {Order}", newOrder.Id, newOrder)
 
@@ -256,61 +283,35 @@ let rec executeOrdersForCommand
                 Symbol = Symbol newOrder.Symbol
             }
             Log.Information("Querying order status after waiting... {Query}", orderQuery)
-            match! (queryOrderWithRetryOnError exchange orderQuery) with
-            | OrderFilled (executedQty, executedPrice) -> 
-                // save filled status in case we didn't get a socket update
-                let filledOrder = {
-                    newOrder with
-                        Status = "FILLED"
-                        StatusReason = "Order filled"
-                        UpdatedTime = DateTime.UtcNow
-                        ExecutedQty = executedQty / 1M<qty>
-                        ExecutedPrice = executedPrice / 1M<price>
-                }
-                let! filledOrder' = saveOrder filledOrder
+
+            let! updatedOrder = getLatestOrderState exchange newOrder orderQuery
+            
+            match updatedOrder.Status with
+            | "FILLED" ->
+                let! filledOrder' = saveOrder updatedOrder
                 Log.Information("Filled order: {ExchangeOrder}", filledOrder')
                 return (filledOrder' :: ordersSoFar)
-            | orderStatus -> 
-                let updatedOrder = 
-                    match orderStatus with
-                    | OrderPartiallyFilled (qty, price) ->
-                        {
-                            newOrder with
-                                Status = "PARTIALLY_FILLED"
-                                StatusReason = "Partially filled"
-                                ExecutedQty = qty / 1M<qty>
-                                ExecutedPrice = price / 1M<price>
-                        }
-                    | _ -> newOrder
-
+            | _ ->
                 Log.Information("Trying to cancel order {ExchangeOrder} (Signal: {SignalId}), because it didn't fill yet. Current status: {OrderStatus}",
                     updatedOrder,
                     updatedOrder.SignalId,
-                    orderStatus)
+                    updatedOrder.Status)
 
-                do! cancelOrderWithRetryOnError exchange orderQuery
+                let! cancelled = cancelOrderWithRetryOnError exchange orderQuery
 
                 // we need to query again, so we get a potentially updated executedQty
-                Log.Information ("Cancel order ({OrderId}) successful, for signal {SignalId}. Querying latest status...",
-                    newOrder.Id, newOrder.SignalId)
+                Log.Information ("Cancel order ({OrderId}) attempted, for signal {SignalId}, command {CommandId}. Success: {Success}. Querying latest status...",
+                    newOrder.Id, newOrder.SignalId, signalCommand.Id, cancelled)
 
-                let! (executedQty, executedPrice) = getExecutedQtyForOrder exchange orderQuery (string signalCommand.SignalId)
-                let cancelledOrder = {
-                    updatedOrder with
-                        Status = "CANCELED"
-                        StatusReason = "Fill timed out."
-                        UpdatedTime = DateTime.UtcNow
-                        ExecutedQty = executedQty / 1M<qty>
-                        ExecutedPrice = executedPrice / 1M<price>
-                }
-                let! exo' = saveOrder cancelledOrder
-                Log.Information ("Saved order after cancellation: {CancelledOrder}", exo')
+                let! updatedOrder' = getLatestOrderState exchange updatedOrder orderQuery 
+                let! updatedOrder'' = saveOrder updatedOrder'
+                Log.Information ("Saved order after cancellation attempt: {UpdatedOrder}", updatedOrder'')
 
-                if executedQty / 1M<qty> < signalCommand.Quantity
+                if updatedOrder''.ExecutedQty < signalCommand.Quantity
                 then
                     Log.Information ("Retrying again - since we didn't fill the original quantity this iteration: Want: {TotalRequiredQty}, FilledSoFar: {FilledQty}",
-                        signalCommand.Quantity, executedQty)
-                    let updatedOrders = exo' :: ordersSoFar
+                        signalCommand.Quantity, updatedOrder''.ExecutedQty)
+                    let updatedOrders = updatedOrder'' :: ordersSoFar
                     let! orders = 
                         executeOrdersForCommand 
                             exchange 
@@ -320,15 +321,15 @@ let rec executeOrdersForCommand
                             updatedOrders
                             cancellationDelaySeconds
                             maxAttempts (attempt + 1)
-                            signalCommand
+                            signalCommand // send the original command for logging - we always figure out what the right qty remaining is.
 
                     return orders
                 else
                     Log.Information("Looks like we filled everything for order {ExchangeOrder}, for command {SignalCommand}. Signal: {SignalId}",
-                        updatedOrder,
+                        updatedOrder',
                         signalCommand,
                         signalCommand.SignalId)
-                    return (updatedOrder:: ordersSoFar) // done, looks like we filled everything!
+                    return (updatedOrder':: ordersSoFar) // done, looks like we filled everything!
     }
 
 type private TradeAgentCommand = 
@@ -461,7 +462,7 @@ let processValidSignals
         do! 
             validCommands
             |> AsyncSeq.ofSeq
-            |> AsyncSeq.iterAsync (
+            |> AsyncSeq.iterAsyncParallel (
                 fun s -> 
                     match tradeAgent with
                     | Some agent -> agent.PostAndAsyncReply (fun replyCh -> FuturesTrade (s, placeRealOrders, replyCh))

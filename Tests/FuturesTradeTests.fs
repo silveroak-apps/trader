@@ -1,10 +1,10 @@
-namespace FuturesTrade
+namespace IntegrationTests
 
 open System
 open Xunit
 open FsUnit.Xunit
 
-module IntegrationTests =
+module FuturesTrade =
 
     let setupSignal () =
         let insertSql = "
@@ -93,6 +93,7 @@ module IntegrationTests =
                                 Db.setSignalCommandsComplete
                                 Db.getExchangeOrder
                                 Db.saveOrder
+                                Db.getPositionSize
                                 false
 
             // check if the command is marked 'expired'

@@ -1,4 +1,4 @@
-﻿namespace DbTests
+﻿namespace IntegrationTests.Db
 
 open FsUnit
 open FsUnit.Xunit

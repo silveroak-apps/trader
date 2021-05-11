@@ -103,7 +103,7 @@ let private cancelIfNotFilled saveOrder (exchange: IExchange) (order: ExchangeOr
                     order,
                     order.SignalId)
                 match! (exchange.CancelOrder orderQuery) with
-                | Ok () ->
+                | Ok true ->
                     // it looks like some websockets like Binance don't seem to be sending an update.
                     // in any case, we better save the updated order here
                     // we need to query again, so we get a potentially updated executedQty
@@ -120,7 +120,8 @@ let private cancelIfNotFilled saveOrder (exchange: IExchange) (order: ExchangeOr
                             ExecutedPrice = executedPrice / 1M<price>
                     }
                     do! saveOrder updatedOrder |> Async.Ignore
-                    
+                | Ok false ->
+                    Log.Warning ("Cancel attempted - but order was not cancelled: {Order}.", order) 
                 | Error ex ->
                     Log.Warning (ex, "Could not cancel BUY order {ExchangeOrder} (Signal: {SignalId}). Ignoring...",
                         order, order.SignalId)
@@ -190,8 +191,8 @@ let private placeOrder getOrdersForSignal (saveOrder: ExchangeOrder -> Async<Res
                     | Ok assetQty  -> 
 
                         match! exchange.GetOrderBookCurrentPrice s.Symbol with
-                        | None -> return (Error <| sprintf "Could not get latest orderbook price before placing order for %s" s.Symbol)
-                        | Some price ->
+                        | Error msg -> return (Error <| sprintf "Could not get latest orderbook price before placing order for %s: %s" s.Symbol msg)
+                        | Ok price ->
                             // intentionally reduce potential loss due to spread
                             let orderPrice =
                                 // this works when we go long

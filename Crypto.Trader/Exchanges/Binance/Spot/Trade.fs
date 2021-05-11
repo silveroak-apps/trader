@@ -364,7 +364,7 @@ let cancelOrder (order: OrderQueryInfo)  =
         Log.Information <| sprintf "  - Binance cancel order %s Response Status: %s" symbol (response.StatusCode.ToString())
         let! msg = response.Content.ReadAsStringAsync() |> Async.AwaitTask
         match response.StatusCode with
-        | System.Net.HttpStatusCode.OK -> return (Ok ())
+        | System.Net.HttpStatusCode.OK -> return (Ok true)
         | _ -> return (Error <| sprintf "Could not cancel order %s. Response: %s" orderId msg)
     }
 
@@ -442,7 +442,7 @@ let getOrderBookCurrentPrice (symbol: string) =
         match (response.StatusCode |> LanguagePrimitives.EnumToValue, responseBody) with
         | (200, responseText) ->
             let symbolTicker = BinanceOrderBookTickerResponse.Parse responseText
-            return (Some {
+            return (Ok {
                 OrderBookTickerInfo.Symbol = symbolTicker.Symbol
                 AskPrice = symbolTicker.AskPrice
                 BidPrice = symbolTicker.BidPrice
@@ -450,8 +450,8 @@ let getOrderBookCurrentPrice (symbol: string) =
                 BidQty = symbolTicker.BidQty
             })
         | (httpStatus, _) ->
-            Log.Warning <| sprintf "Error getting current order book price - for %s. HTTP %A" symbol httpStatus
-            return None
+            let result = Result.Error <| sprintf "Error getting current order book price - for %s. HTTP %A" symbol httpStatus
+            return result
     }
 
 let placeOrder (order: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> = 

@@ -1,4 +1,4 @@
-﻿namespace DbTests
+﻿namespace IntegrationTests.Db
 
 open System
 open Microsoft.VisualStudio.TestTools.UnitTesting

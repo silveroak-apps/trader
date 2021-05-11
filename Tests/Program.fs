@@ -2,7 +2,6 @@
 
 open Serilog
 open System
-open DbTests
 
 [<EntryPoint>]
 let main _ =
@@ -11,6 +10,6 @@ let main _ =
                         .CreateLogger()
 
     // GetBuyOrderForSell().``GetBuyOrderForSell Returns correct data for existing signal``()
-    FuturesTrade.IntegrationTests.``Process valid signals expires old signal commands``()
+    IntegrationTests.FuturesTrade.``Process valid signals expires old signal commands``()
     Console.ReadLine() |> ignore
     0
