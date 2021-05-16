@@ -13,4 +13,4 @@ WORKDIR /app
 COPY --from=build-env /app/out .
 CMD dotnet ${STARTUP_DLL} ${cli_args}
 
-EXPOSE 5000
+EXPOSE 80
