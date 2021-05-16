@@ -59,14 +59,15 @@ let determineOrderPrice (exchange: IExchange) (s: FuturesSignalCommandView) (ord
     asyncResult {
         let! orderBook = exchange.GetOrderBookCurrentPrice s.Symbol
         // reduce potential loss due to spread
+        // chanding back to aggressive buy / sell
         let result =
             match orderSide, s.PositionType with
             | BUY,  "LONG"  -> 
                 let diff = orderBook.BidPrice - s.Price
-                Math.Min(s.Price, orderBook.BidPrice)
+                orderBook.BidPrice
             | BUY,  "SHORT" -> orderBook.BidPrice
             | SELL, "LONG"  -> orderBook.AskPrice
-            | SELL, "SHORT" -> Math.Max(s.Price, orderBook.AskPrice)
+            | SELL, "SHORT" -> orderBook.AskPrice
             | _             -> raise (exn <| sprintf "Unexpected position type value: '%s' trying to determine order price" s.PositionType)
         return result
     } 
@@ -366,8 +367,8 @@ let private mkTradeAgent
 
                         let exchangeId = if placeRealOrders then s.ExchangeId else Simulator.ExchangeId
                         let attemptCount = 1
-                        let maxAttempts = if s.Action = "OPEN" then 1 else 100
-                        let cancellationDelay = if s.Action = "OPEN" then 100 else 30 // seconds
+                        let maxAttempts = if s.Action = "OPEN" then 5 else 100
+                        let cancellationDelay = if s.Action = "OPEN" then 5 else 5 // seconds
                         let maxSlippage = 0.15M // % // unused at the moment
 
                         (*
