@@ -99,7 +99,11 @@ let toExchangeOrder (signalCommand: FuturesSignalCommandView) =
             }
         ) orderSide
 
-let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) =
+let calcSlippage orderBookPrice desiredPrice =
+    ( orderBookPrice - desiredPrice ) * 100M / desiredPrice
+   
+
+let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) maxSlippage =
     asyncResult {
         Log.Information ("Placing an order for command {Command} for signal {SignalId} using exchange {Exchange}", s, s.SignalId, exchange.GetType().Name)
 
@@ -108,40 +112,51 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) =
 
         let assetQty = Math.Abs(s.Quantity) * 1M<qty> // need to take abs value to ensure the right amount is used for longs/shorts
         let! orderPrice = determineOrderPrice exchange s orderSide
-        Log.Information("Placing {OrderSide} order with reduced spread loss. Signal suggested price: {SignalSuggestedPrice}. Order request price: {OrderRequestPrice}",
-            orderSide,
-            s.Price,
-            orderPrice
-            )
-        let orderInput = {
-            OrderInputInfo.SignalId = s.SignalId
-            OrderSide = orderSide
-            Price = orderPrice * 1M<price>
-            Symbol = sym
-            Quantity = assetQty
-            PositionSide = PositionSide.FromString s.PositionType
-            OrderType = OrderType.LIMIT
-        }
+        let slippage = calcSlippage orderPrice s.Price
+        if slippage > maxSlippage && s.Action = "OPEN"
+        then
+            Log.Warning("Not Placing any {OrderSide} order with reduced spread loss. Signal suggested price: {SignalSuggestedPrice}. Order request price: {OrderRequestPrice} as Slippaged crossed {Slippage}",
+                orderSide,
+                s.Price,
+                orderPrice,
+                slippage
+                )
+            return! Result.Error (exn "Not placing order due to high slippage")
+        else
+            Log.Information("Placing {OrderSide} order with reduced spread loss. Signal suggested price: {SignalSuggestedPrice}. Order request price: {OrderRequestPrice}",
+                orderSide,
+                s.Price,
+                orderPrice
+                )
+            let orderInput = {
+                OrderInputInfo.SignalId = s.SignalId
+                OrderSide = orderSide
+                Price = orderPrice * 1M<price>
+                Symbol = sym
+                Quantity = assetQty
+                PositionSide = PositionSide.FromString s.PositionType
+                OrderType = OrderType.LIMIT
+            }
 
-        // TODO: Review this flow and see if we need to indicate that a 'rejected' order can't be simply retried
-        let mapOrderError err =
-            match err with
-            | OrderRejectedError ore ->
-                Log.Error("Error (order rejected by exchange) trying to execute signal command {CommandId}: {Error}", s.Id, ore)
-                ore
-            | OrderError oe ->
-                Log.Error("Error trying to execute signal command {CommandId}: {Error}", s.Id, oe)
-                oe
-            |> exn
+            // TODO: Review this flow and see if we need to indicate that a 'rejected' order can't be simply retried
+            let mapOrderError err =
+                match err with
+                | OrderRejectedError ore ->
+                    Log.Error("Error (order rejected by exchange) trying to execute signal command {CommandId}: {Error}", s.Id, ore)
+                    ore
+                | OrderError oe ->
+                    Log.Error("Error trying to execute signal command {CommandId}: {Error}", s.Id, oe)
+                    oe
+                |> exn
 
-        let! o = exchange.PlaceOrder orderInput |> AsyncResult.mapError mapOrderError
+            let! o = exchange.PlaceOrder orderInput |> AsyncResult.mapError mapOrderError
 
-        let! exo = 
-            s
-            |> toExchangeOrder            
-            |> Result.map (updateOrderWith o "Placed order")
+            let! exo = 
+                s
+                |> toExchangeOrder            
+                |> Result.map (updateOrderWith o "Placed order")
 
-        return exo
+            return exo
     } |> AsyncResult.catch id
 
 let private retryCount = 10
@@ -150,10 +165,10 @@ let private delay = TimeSpan.FromSeconds(1.0)
 // TODO: we need to start identifying what sort of things can be retried, and what can't
 // eg. rejected orders won't work unless the inputs are changed
 
-let placeOrderWithRetryOnError (exchange: IExchange) (signalCmd: FuturesSignalCommandView) =
+let placeOrderWithRetryOnError (exchange: IExchange) (signalCmd: FuturesSignalCommandView) maxSlippage =
     // retry 'retryCount' times, in quick succession if there is an error placing an order
-    let placeOrder' = placeOrder exchange
-    placeOrder' |> withRetryOnErrorResult retryCount delay signalCmd
+    let placeOrder' = placeOrder exchange signalCmd 
+    placeOrder' |> withRetryOnErrorResult retryCount delay maxSlippage
 
 let queryOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo) = 
     let queryOrder () =
@@ -271,7 +286,7 @@ let rec executeOrdersForCommand
                     return! cmd
                 }
 
-            let! exchangeOrder = placeOrderWithRetryOnError exchange commandWithRemainingQty
+            let! exchangeOrder = placeOrderWithRetryOnError exchange commandWithRemainingQty maxSlippage
             let! newOrder = saveOrder exchangeOrder
             Log.Information("Saved new order: {InternalOrderId}. {Order}", newOrder.Id, newOrder)
 
@@ -369,7 +384,7 @@ let private mkTradeAgent
                         let attemptCount = 1
                         let maxAttempts = if s.Action = "OPEN" then 5 else 100
                         let cancellationDelay = if s.Action = "OPEN" then 5 else 5 // seconds
-                        let maxSlippage = 0.15M // % // unused at the moment
+                        let maxSlippage = 0.15M // % 
 
                         (*
                         1 find our which exchange to place order
