@@ -46,14 +46,13 @@ type MarketEvent = {
     TimeFrame: string
     Exchange: string
     Category: string
+    Contracts: decimal
 }
 
-let private marketEventCfg = appConfig.GetSection "MarketEventUrl"
+let private marketEventUrl = appConfig.GetSection "MarketEventUrl"
 let private marketEventApiKey = appConfig.GetSection "MarketEventApiKey"
 let private marketEventHttpClient = new HttpClient()
 let private jsonOptions = new JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.CamelCase)
-
-let private tradeMode = appConfig.GetSection "TradeMode"
 
 type ContractDetails = {
     Multiplier: int // i.e if it is contracts, how many USD is 1 contract
@@ -70,6 +69,7 @@ let usdtSymbols  =
         ("ETHUSDT", { Multiplier = 1 })
         ("ADAUSDT", { Multiplier = 1 })
         ("DOTUSDT", { Multiplier = 1 })
+        ("DOGEUSDT", { Multiplier = 1 })
     ]
 
 let coinMSymbols =
@@ -105,19 +105,26 @@ let placeOrders (signalCommand: FuturesSignalCommandView) : Async<Result<unit, e
 
 let private closeSignal (position: Position) (price: BinanceFuturesStreamBookPrice) =
     let (Symbol symbol) = position.Symbol
-    let strategy = sprintf "sell_analyser_close_%s_trailing_stop_loss_%s" symbol (position.PositionSide.ToString().ToLower())
+    let strategy = "position_analyser_close"
+        // sprintf "position_analyser_close_%s_trailing_stop_loss_%s" symbol (position.PositionSide.ToString().ToLower())
 
-    match tradeMode.Value with
-    | "MarketEvent" ->
+    Log.Information ("About to try to a close position: {Position} since we are stopped out", position)
+
+    // TODO we should check the db for an open signal
+    // -> for the combination of exchange,symbol,positionType
+    // -> and save a signal command, and call the trader, so we immediately start closing it
+    match marketEventUrl.Value with
+    | marketEvtUrl when marketEvtUrl.Length > 0 ->
         
         let marketEvent = {
             MarketEvent.Name = strategy
             Price = price.BestBidPrice
             Symbol = symbol.ToUpperInvariant()
-            Market = "" // hardcode for now - no relevant for now
-            TimeFrame = "1m" // hardcode for now
+            Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
+            TimeFrame = "1" // hardcode for now
             Exchange = "Binance"
             Category = "Stoploss"
+            Contracts = Math.Abs(position.PositionAmount)
         }
         async {
             if not <| marketEventHttpClient.DefaultRequestHeaders.Contains("x-api-key")
@@ -127,7 +134,7 @@ let private closeSignal (position: Position) (price: BinanceFuturesStreamBookPri
             let content = new StringContent(json, Text.Encoding.UTF8, "application/json")
 
             let! response = 
-                marketEventHttpClient.PostAsync(marketEventCfg.Value, content) 
+                marketEventHttpClient.PostAsync(marketEvtUrl, content) 
                 |> Async.AwaitTask
             if response.IsSuccessStatusCode
             then Log.Information("Raised a market event to close the long: {@MarketEvent}", marketEvent)
@@ -171,6 +178,7 @@ type Balance = {
 type PositionKey = PositionKey of string
 type BalanceKey  = BalanceKey  of string
 
+// TODO move this to db config table
 let private tradeFeesPercent = 0.04m // assume the worst: current market order fees for Binance is 0.04% (https://www.binance.com/en/support/articles/360033544231)
 let private positions = new ConcurrentDictionary<PositionKey, Position>()
 
@@ -333,10 +341,14 @@ let private fetchPosition (client: BinanceClient) (p: BinanceFuturesStreamPositi
      }
 
 let private calculateStopLoss (position: Position) (gainOpt: decimal option) =
-    let minStopLoss = -1.5M * decimal position.Leverage
+    let minStopLoss = -1M * decimal position.Leverage // % - TODO move to config
     let previousStopLossValue = position.StoplossPnlPercentValue
-    let previousGain = Option.defaultValue 0M position.CalculatedPnlPercent
     let gain = Option.defaultValue 0M gainOpt
+
+    let trailingTakeProfitLevel = 1M // % - TODO move to config
+    let trailingDistance = 0.5M // % - TODO move to config
+
+    let breakEvenLevel = 0.33M // % - TODO move to config
 
     let stopLossOfAtleast prevStopLoss newStopLoss = 
         // by this time we've already got a stop loss.
@@ -352,8 +364,13 @@ let private calculateStopLoss (position: Position) (gainOpt: decimal option) =
     | None ->
         Some minStopLoss // always start with the minstoploss    
 
-    | Some v when gain > previousGain ->
-        let newStopLoss = if gain > 0M then gain - (1.5M * decimal position.Leverage) else minStopLoss
+    | Some v when gain >= trailingTakeProfitLevel ->
+        let newStopLoss = gain - trailingDistance
+        let sl = stopLossOfAtleast v newStopLoss
+        sl
+
+    | Some v when gain >= breakEvenLevel ->
+        let newStopLoss = breakEvenLevel
         let sl = stopLossOfAtleast v newStopLoss
         sl
 
@@ -364,9 +381,13 @@ let private calculatePnl (position: Position) (price: BinanceFuturesStreamBookPr
     let pnl = 
         match position.PositionSide with
         | Enums.PositionSide.Long ->
-            qty * (price.BestAskPrice - position.EntryPrice) - (qty * 2m * tradeFeesPercent) |> Some
+            let grossPnl = qty * (price.BestAskPrice - position.EntryPrice)
+            let fees = grossPnl * tradeFeesPercent
+            grossPnl - fees |> Some
         | Enums.PositionSide.Short ->
-            qty * (position.EntryPrice - price.BestBidPrice) - (qty * 2m * tradeFeesPercent)  |> Some
+            let grossPnl = qty * (position.EntryPrice - price.BestBidPrice)
+            let fees = grossPnl * tradeFeesPercent
+            grossPnl - fees |> Some
         | _ -> None
     let pnlPercent =
         pnl
@@ -416,7 +437,7 @@ let private refreshPositions (client: BinanceClient) =
         Log.Information "Now cleaning up old stopped out positions"
         cleanUpStoppedPositions ()
 
-        Log.Information ("We have {PositionCount} positions now.", positions.Count)
+        // Log.Information ("We have {PositionCount} positions now.", positions.Count)
         printPositions positions.Values
     }
  
@@ -449,6 +470,15 @@ let private updatePositionPnl (client: BinanceClient) (price: BinanceFuturesStre
                     do! Async.Sleep (45 * 1000) // 45 seconds
                     do! refreshPositions client
                 }
+                |> Async.Catch
+                |> Async.map (fun c ->
+                        match c with
+                        | Choice2Of2 ex -> 
+                            Log.Warning(ex, "Error trying to close position: {Error}", ex.Message)
+                            c
+                        | _ -> c
+                    )
+                |> Async.Ignore
                 |> Async.Start
         )
 
@@ -461,8 +491,7 @@ let private mkTradeAgent (client: BinanceClient) =
             try
                 match msg with
                 | FuturesAccountUpdate accountUpdate ->
-                    
-                    
+
                     // add or update positions from the incoming update
                     accountUpdate.UpdateData.Positions
                     |> Seq.map (fetchPosition client)
@@ -563,6 +592,7 @@ let trackPositions () =
     tradeAgent.Post RefreshPositions
 
     repeatEvery (TimeSpan.FromSeconds(3.0)) printPositionSummary "PositionSummaryPrinter" |> Async.Start
+    repeatEvery (TimeSpan.FromSeconds(15.0)) (fun () -> refreshPositions client) "PositionRefresh" |> Async.Start
 
     started <- 
         started || 
