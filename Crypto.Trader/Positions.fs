@@ -36,6 +36,7 @@ type Position = {
     StoplossPnlPercentValue: decimal option // Stop loss expressed in terms of Pnl percent (not price)
     MaxQuantity: decimal //not sure what this is
     IsStoppedOut: bool
+    CloseRaisedTime: DateTime option
 }
 
 type MarketEvent = {
@@ -53,6 +54,20 @@ let private marketEventUrl = appConfig.GetSection "MarketEventUrl"
 let private marketEventApiKey = appConfig.GetSection "MarketEventApiKey"
 let private marketEventHttpClient = new HttpClient()
 let private jsonOptions = new JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.CamelCase)
+
+
+type Balance = {
+    Symbol: Symbol
+    Amount: decimal
+}
+
+type PositionKey = PositionKey of string
+type BalanceKey  = BalanceKey  of string
+
+// TODO move this to db config table
+let private tradeFeesPercent = 0.04m // assume the worst: current market order fees for Binance is 0.04% (https://www.binance.com/en/support/articles/360033544231)
+
+let private positions = new ConcurrentDictionary<PositionKey, Position>()
 
 type ContractDetails = {
     Multiplier: int // i.e if it is contracts, how many USD is 1 contract
@@ -81,6 +96,8 @@ let coinMSymbols =
         ("DOTUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
     ]
 
+let private makePositionKey symbol (positionSide: Enums.PositionSide) = PositionKey <| sprintf "%s-%s" symbol (positionSide.ToString())
+
 let placeOrders (signalCommand: FuturesSignalCommandView) : Async<Result<unit, exn>> =
     asyncResult {
         //TODO fix some hardcoded values
@@ -104,83 +121,81 @@ let placeOrders (signalCommand: FuturesSignalCommandView) : Async<Result<unit, e
     }
 
 let private closeSignal (position: Position) (price: BinanceFuturesStreamBookPrice) =
-    let (Symbol symbol) = position.Symbol
-    let strategy = "position_analyser_close"
-        // sprintf "position_analyser_close_%s_trailing_stop_loss_%s" symbol (position.PositionSide.ToString().ToLower())
+    async {
+        let (Symbol symbol) = position.Symbol
+        let strategy = "position_analyser_close"
 
-    Log.Information ("About to try to a close position: {Position} since we are stopped out", position)
-
-    // TODO we should check the db for an open signal
-    // -> for the combination of exchange,symbol,positionType
-    // -> and save a signal command, and call the trader, so we immediately start closing it
-    match marketEventUrl.Value with
-    | marketEvtUrl when marketEvtUrl.Length > 0 ->
-        
-        let marketEvent = {
-            MarketEvent.Name = strategy
-            Price = price.BestBidPrice
-            Symbol = symbol.ToUpperInvariant()
-            Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
-            TimeFrame = "1" // hardcode for now
-            Exchange = "Binance"
-            Category = "Stoploss"
-            Contracts = Math.Abs(position.PositionAmount)
-        }
-        async {
-            if not <| marketEventHttpClient.DefaultRequestHeaders.Contains("x-api-key")
-            then marketEventHttpClient.DefaultRequestHeaders.Add("x-api-key", marketEventApiKey.Value)
-           
-            let json = JsonSerializer.Serialize(marketEvent, jsonOptions)
-            let content = new StringContent(json, Text.Encoding.UTF8, "application/json")
-
-            let! response = 
-                marketEventHttpClient.PostAsync(marketEvtUrl, content) 
-                |> Async.AwaitTask
-            if response.IsSuccessStatusCode
-            then Log.Information("Raised a market event to close the long: {@MarketEvent}", marketEvent)
-            else Log.Error ("Error raising a market event to close the long: {Status} - {ErrorReason}", response.StatusCode, response.ReasonPhrase)
-            
+        // check if we have already attempted a close recently
+        if position.CloseRaisedTime.IsSome
+        then
+            // already raised a close - ignore
             return ()
-        }
+        else
+            Log.Information ("About to try to a close position: {Position} since we are stopped out", position)
 
-    | _ ->
-        // place trade directly on exchange! works for manual trade takeover without any other dependencies
-        asyncResult {
-            let cmd = {
-                Id = 1L // does not matter for this
-                SignalId = 0L // does not matter for this : but will be good to pull in ClientOrderId later
-                FuturesSignalCommandView.Action = "CLOSE"
-                PositionType = position.PositionSide.ToString().ToUpper()
-                ExchangeId = Binance.Futures.Trade.ExchangeId
-                ActionDateTime = DateTime.Now
-                Price = if position.PositionSide = Enums.PositionSide.Long then price.BestAskPrice else price.BestBidPrice
-                Quantity = Math.Abs position.PositionAmount
-                Symbol = symbol
-                RequestDateTime = DateTime.Now
-                Leverage = position.Leverage
-                Strategy = strategy
-                Status = "CREATED"
-            }
-            do! placeOrders cmd
-            return ()
-        } 
-        |> Async.map (fun result -> 
-                match result with
-                | Ok _ -> ()
-                | Result.Error ex -> Log.Error (ex, "Error closing signal: {ErrorMsg}", ex.Message)
-            )
+            // TODO we should check the db for an open signal
+            // -> for the combination of exchange,symbol,positionType
+            // -> and save a signal command, and call the trader, so we immediately start closing it
+            match marketEventUrl.Value with
+            | marketEvtUrl when marketEvtUrl.Length > 0 ->
+                let marketEvent = {
+                    MarketEvent.Name = strategy
+                    Price = price.BestBidPrice
+                    Symbol = symbol.ToUpperInvariant()
+                    Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
+                    TimeFrame = "1" // hardcode for now
+                    Exchange = "Binance"
+                    Category = "Stoploss"
+                    Contracts = Math.Abs(position.PositionAmount)
+                }
+                if not <| marketEventHttpClient.DefaultRequestHeaders.Contains("x-api-key")
+                then marketEventHttpClient.DefaultRequestHeaders.Add("x-api-key", marketEventApiKey.Value)
+               
+                let json = JsonSerializer.Serialize(marketEvent, jsonOptions)
+                let content = new StringContent(json, Text.Encoding.UTF8, "application/json")
+                let! response = 
+                    marketEventHttpClient.PostAsync(marketEvtUrl, content) 
+                    |> Async.AwaitTask
+                if response.IsSuccessStatusCode
+                then
+                    let key = makePositionKey symbol position.PositionSide
+                    positions.[key] <- {
+                        position with CloseRaisedTime = Some DateTime.Now
+                    }
 
-type Balance = {
-    Symbol: Symbol
-    Amount: decimal
-}
-
-type PositionKey = PositionKey of string
-type BalanceKey  = BalanceKey  of string
-
-// TODO move this to db config table
-let private tradeFeesPercent = 0.04m // assume the worst: current market order fees for Binance is 0.04% (https://www.binance.com/en/support/articles/360033544231)
-let private positions = new ConcurrentDictionary<PositionKey, Position>()
+                    Log.Information("Raised a market event to close the long: {@MarketEvent}", marketEvent)
+                else Log.Error ("Error raising a market event to close the long: {Status} - {ErrorReason}", response.StatusCode, response.ReasonPhrase)
+                return ()
+            | _ ->
+                // place trade directly on exchange! works for manual trade takeover without any other dependencies
+                // todo - maybe this needs to go - and be replaced with a signal command?
+                let directPlaceOrderAsync = 
+                    asyncResult {
+                        let cmd = {
+                            Id = 1L // does not matter for this
+                            SignalId = 0L // does not matter for this : but will be good to pull in ClientOrderId later
+                            FuturesSignalCommandView.Action = "CLOSE"
+                            PositionType = position.PositionSide.ToString().ToUpper()
+                            ExchangeId = Binance.Futures.Trade.ExchangeId
+                            ActionDateTime = DateTime.Now
+                            Price = if position.PositionSide = Enums.PositionSide.Long then price.BestAskPrice else price.BestBidPrice
+                            Quantity = Math.Abs position.PositionAmount
+                            Symbol = symbol
+                            RequestDateTime = DateTime.Now
+                            Leverage = position.Leverage
+                            Strategy = strategy
+                            Status = "CREATED"
+                        }
+                        do! placeOrders cmd
+                        return ()
+                    }
+                    |> Async.map (fun result -> 
+                            match result with
+                            | Ok _ -> ()
+                            | Result.Error ex -> Log.Error (ex, "Error closing signal: {ErrorMsg}", ex.Message)
+                        )
+                return! directPlaceOrderAsync
+    }
 
 let mutable started = false
 type private TradeAgentCommand = 
@@ -239,6 +254,7 @@ let private getUsdtPositionsFromBinanceAPI (client: IBinanceClientFuturesUsdt) (
                         UnrealisedPnl = p.UnrealizedProfit // this does not consider fees etc
                         MaxQuantity = p.MaxNotionalValue // not sure what this is
                         IsStoppedOut = false
+                        CloseRaisedTime = None
                         // EntryTime we don't actually know - unless we query orders and guess / calculate over time :|
                     })
             else
@@ -278,6 +294,7 @@ let private getCoinPositionsFromBinanceAPI (client: IBinanceClientFuturesCoin) (
                         UnrealisedPnl = p.UnrealizedProfit
                         MaxQuantity = p.MaxQuantity // not sure what this is
                         IsStoppedOut = false
+                        CloseRaisedTime = None
                         // EntryTime we don't actually know - unless we query orders and guess / calculate over time :|
                     })
             else
@@ -287,7 +304,6 @@ let private getCoinPositionsFromBinanceAPI (client: IBinanceClientFuturesCoin) (
         return positions
     }
 
-let private makePositionKey symbol (positionSide: Enums.PositionSide) = PositionKey <| sprintf "%s-%s" symbol (positionSide.ToString())
 
 let private savePositions (ps: Position seq) = 
     ps 
@@ -458,13 +474,14 @@ let private updatePositionPnl (client: BinanceClient) (price: BinanceFuturesStre
                 }
             
             let isStoppedOut = isStopLossHit pos'
-            positions.[key] <- {
+            let pos'' = {
                 pos' with
-                     IsStoppedOut = isStoppedOut 
+                     IsStoppedOut = pos'.IsStoppedOut || isStoppedOut 
             }
+            positions.[key] <- pos''
 
             // raise signal / trade when stopped out
-            if isStoppedOut then
+            if pos''.IsStoppedOut then
                 async {
                     do! closeSignal positions.[key] price
                     do! Async.Sleep (45 * 1000) // 45 seconds
