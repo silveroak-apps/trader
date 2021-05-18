@@ -17,6 +17,8 @@ Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Crypto.Trader", "Crypto.Tra
 EndProject
 Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Crypto.Shared", "Crypto.Shared\Crypto.Shared.fsproj", "{8601C823-659E-40EA-B70B-21234316E2BE}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FSharpWebApi", "FSharpWebApi\FSharpWebApi.fsproj", "{3DC5085D-DB86-41C0-B216-C5497E179552}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{8601C823-659E-40EA-B70B-21234316E2BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8601C823-659E-40EA-B70B-21234316E2BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8601C823-659E-40EA-B70B-21234316E2BE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3DC5085D-DB86-41C0-B216-C5497E179552}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3DC5085D-DB86-41C0-B216-C5497E179552}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3DC5085D-DB86-41C0-B216-C5497E179552}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3DC5085D-DB86-41C0-B216-C5497E179552}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
