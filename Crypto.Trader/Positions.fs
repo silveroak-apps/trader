@@ -85,6 +85,8 @@ let usdtSymbols  =
         ("ADAUSDT", { Multiplier = 1 })
         ("DOTUSDT", { Multiplier = 1 })
         ("DOGEUSDT", { Multiplier = 1 })
+        ("MATICUSDT", { Multiplier = 1 })
+        ("LUNAUSDT", { Multiplier = 1 })
     ]
 
 let coinMSymbols =
