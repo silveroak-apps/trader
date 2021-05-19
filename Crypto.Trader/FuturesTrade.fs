@@ -384,7 +384,7 @@ let private mkTradeAgent
                         let attemptCount = 1
                         let maxAttempts = if s.Action = "OPEN" then 5 else 100
                         let cancellationDelay = if s.Action = "OPEN" then 5 else 5 // seconds
-                        let maxSlippage = 0.15M // % 
+                        let maxSlippage = 0.3M // % 
 
                         (*
                         1 find our which exchange to place order
