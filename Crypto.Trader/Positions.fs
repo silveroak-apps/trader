@@ -361,10 +361,10 @@ let private calculateStopLoss (position: Position) (gainOpt: decimal option) =
     let previousStopLossValue = position.StoplossPnlPercentValue
     let gain = Option.defaultValue 0M gainOpt
 
-    let trailingTakeProfitLevel = 1M // % - TODO move to config
-    let trailingDistance = 0.5M // % - TODO move to config
+    let trailingTakeProfitLevel = 1M * decimal position.Leverage // % - TODO move to config
+    let trailingDistance = 0.5M * decimal position.Leverage // % - TODO move to config
 
-    let breakEvenLevel = 0.33M // % - TODO move to config
+    let breakEvenLevel = 0.33M * decimal position.Leverage // % - TODO move to config
 
     let stopLossOfAtleast prevStopLoss newStopLoss = 
         // by this time we've already got a stop loss.
