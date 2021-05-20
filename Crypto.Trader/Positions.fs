@@ -388,7 +388,7 @@ let private calculateStopLoss (position: Position) (gainOpt: decimal option) =
         sl
 
     | Some v when gain >= breakEvenLevel ->
-        let newStopLoss = breakEvenLevel
+        let newStopLoss = breakEvenLevel / 2M
         let sl = stopLossOfAtleast v newStopLoss
         sl
 
