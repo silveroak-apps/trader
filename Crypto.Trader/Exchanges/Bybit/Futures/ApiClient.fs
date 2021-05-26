@@ -9,6 +9,7 @@ type BybitCoinMKlineApi = IO.Swagger.Api.KlineApi
 type BybitUSDTKlineApi = IO.Swagger.Api.LinearKlineApi
 
 type BybitKLineBase = IO.Swagger.Model.KlineBase
+type BybitKLine = IO.Swagger.Model.KlineRes
 
 type BybitTradeApi = IO.Swagger.Api.ExecutionApi
 type BybitMarketApi = IO.Swagger.Api.MarketApi
