@@ -4,7 +4,7 @@ open System
 open System.Collections.Generic
 open Serilog
 open Serilog.Context
-open Binance.Futures
+
 open FSharpx.Control
 open FSharp.Control
 open FsToolkit.ErrorHandling
@@ -13,8 +13,8 @@ open DbTypes
 open Types
 
 let private knownExchanges = dict [
-    ( Trade.ExchangeId, Trade.getExchange() )
-    ( Simulator.ExchangeId, Simulator.Exchange.get(Trade.getExchange()) )
+    ( Binance.Futures.Trade.ExchangeId, Binance.Futures.Trade.getExchange() )
+    ( Simulator.ExchangeId, Simulator.Exchange.get(Binance.Futures.Trade.getExchange()) )
 ]
 
 let getExchange (exchangeId: int64) = 
