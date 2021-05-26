@@ -14,6 +14,9 @@
     <Compile Include="Exchanges\Bybit\Futures\Trade.fs" />
     <Compile Include="Exchanges\Bybit\Futures\Market.fs" />
     <Compile Include="Exchanges\Simulator\Exchange.fs" />
+    <Compile Include="Strategies\Analysis.fs" />
+    <Compile Include="Strategies\Common.fs" />
+    <Compile Include="Strategies\WarOnFuturesKLines.fs" />
     <Compile Include="FuturesTrade.fs" />
     <Compile Include="SpotTrade.fs" />
     <Compile Include="Db.fs" />

@@ -3,6 +3,7 @@ module AnalysisTypes
 open System
 
 type KLine = {
+    Symbol: Symbol
     IntervalMinutes: int
     Open: decimal
     Close: decimal

@@ -1,4 +1,4 @@
-module Bybit.Futures.Api
+module Bybit.Futures.Types
 
 (*
     Bybit InversePerpetual contracts are like Binance COIN-M margined perpetual contracts

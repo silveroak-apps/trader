@@ -2,7 +2,7 @@ module Bybit.Futures.Market
 
 open AnalysisTypes
 open FsToolkit.ErrorHandling
-open Bybit.Futures.Api
+open Bybit.Futures.Types
 open System
 
 let private fromBybitKLine (k: BybitKLine): KLine =
@@ -20,6 +20,7 @@ let private fromBybitKLine (k: BybitKLine): KLine =
         High = k.High |> Decimal.Parse
         Volume = k.Volume |> Decimal.Parse
         IntervalMinutes = parseInterval k.Interval
+        Symbol = Symbol k.Symbol
     }
 
 let private getKLines (q: KLineQuery) : Async<Result<KLine seq, KLineError>> =    
@@ -42,7 +43,7 @@ let private getKLines (q: KLineQuery) : Async<Result<KLine seq, KLineError>> =
                 | _ -> Async.singleton None
 
         match bybitKlineResponse with
-        | None -> return Result.Error (UnsupportedKlineTypeError <| q.Type.ToString())
+        | None -> return Result.Error (UnsupportedKlineTypeError <| sprintf "Bybit does not support %s" (q.Type.ToString()))
         | Some response ->
             let jobj = response :?> Newtonsoft.Json.Linq.JObject
             let klineResponse = jobj.ToObject<BybitKLineBase>()
@@ -57,3 +58,5 @@ let getMarketDataProvider() = {
         new IMarketDataProvider with
         member __.GetKLines q = getKLines q
     }
+
+let ExchangeId = 5L
