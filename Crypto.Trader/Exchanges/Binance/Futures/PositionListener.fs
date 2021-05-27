@@ -8,9 +8,9 @@ open FSharpx.Control
 open Serilog.Context
 open CryptoExchange.Net.Objects
 open FSharp.Control
-open Trade
 open FsToolkit.ErrorHandling
 open Types
+open Binance.Futures.Common
 
 let private getUsdtPositionsFromBinanceAPI (client: IBinanceClientFuturesUsdt) (symbol: string option) =
     async {
@@ -157,7 +157,7 @@ let private listenFutures (tradeAgent: MailboxProcessor<PositionCommand>) (clien
         |> Seq.map (listenToFuturesPriceTickerForSymbol tradeAgent socketClientFutures)
         |> Seq.reduce ((&&))
 
-let private trackPositions (tradeAgent: MailboxProcessor<PositionCommand>) (symbols: string seq) =
+let trackPositions (tradeAgent: MailboxProcessor<PositionCommand>) (symbols: string seq) =
     use _x = LogContext.PushProperty ("Futures", true)
 
     let client = getBaseClient ()
@@ -169,5 +169,3 @@ let private trackPositions (tradeAgent: MailboxProcessor<PositionCommand>) (symb
     let coinMSymbols = symbols |> Seq.except usdtSymbols
     listenFutures tradeAgent client.FuturesCoin socketClient.FuturesCoin coinMSymbols &&
     listenFutures tradeAgent client.FuturesUsdt socketClient.FuturesUsdt usdtSymbols
-
-

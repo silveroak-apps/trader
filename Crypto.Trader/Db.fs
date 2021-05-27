@@ -295,45 +295,6 @@ let private saveOrder' (exo: ExchangeOrder) (t: TradeMode) =
         return orderId
     }
 
-let private getSignalsInPlay' (Symbol s) exchangeId positionType = 
-    async {
-        let sql = "
-            select signal_id, symbol, position_type, 
-        	   position_status, signal_status
-        	from futures_positions
-        	where symbol = @Symbol 
-        	   and exchange_id = @ExchangeId
-        	   and position_type = @PositionType
-        	   and signal_status in ( 'ACTIVE', 'CREATED', 'UNKNOWN' )
-        	order by signal_id desc
-        "
-        let param = {| Symbol = s; ExchangeId = exchangeId; PositionType = positionType |}
-        return! getWithParam<Signal> sql param
-    }
-
-let private createSignal' (s: Signal) =
-    async {
-        let insertSql = "
-            INSERT INTO public.futures_signal (
-             signal_id,
-             status,
-             symbol,
-             strategy,
-             created_date_time,
-             exchange_id
-            )
-            VALUES (
-                @SignalId, 
-                'OPEN',
-                'BTCUSDTTEST',
-                'Futures Trader Integration Test',
-                @CreatedDateTime,
-                0
-            );
-        "
-        return ()
-    }
-
 type private DbAgentCommand = 
     // Spot only
     | GetSignalsToBuyOrSell of AsyncReplyChannel<Signal seq>
@@ -343,8 +304,6 @@ type private DbAgentCommand =
     | GetFuturesSignalCommands of AsyncReplyChannel<FuturesSignalCommandView seq>
     | SetSignalCommandComplete  of SignalCommandId seq * SignalCommandStatus * AsyncReplyChannel<unit>
     | GetPositionSize of SignalId * AsyncReplyChannel<decimal>
-
-    | GetSignalsInPlay of Symbol * ExchangeId * PositionSide * AsyncReplyChannel<Signal seq>
     
     // Common 
     // Save order handles signal updates too :/

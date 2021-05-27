@@ -16,7 +16,6 @@ type PositionKey = PositionKey of string
 
 // TODO move this to db config table
 let private tradeFeesPercent = 0.04m // assume the worst: current market order fees for Binance is 0.04% (https://www.binance.com/en/support/articles/360033544231)
-
 type private PositionAnalysis = {
     EntryPrice: decimal
     Symbol: Symbol
@@ -405,7 +404,7 @@ let private mkTradeAgent (exchanges: IFuturesExchange seq) =
         messageLoop()
     )
 
-let trackPositions (exchanges: IFuturesExchange seq) =
+let trackPositions (exchanges: IFuturesExchange seq) (symbols: string seq) =
     use _x = LogContext.PushProperty ("Futures", true)
 
     Log.Information "Starting socket client for Binance futures user data stream"
@@ -423,7 +422,7 @@ let trackPositions (exchanges: IFuturesExchange seq) =
     repeatEvery (TimeSpan.FromSeconds(15.0)) (fun () -> refreshPositions exchanges) "PositionRefresh" |> Async.Start
 
     exchanges
-    |> Seq.map (fun exchange -> exchange.TrackPositions (tradeAgent))
+    |> Seq.map (fun exchange -> exchange.TrackPositions (tradeAgent, symbols))
     |> Async.Parallel
     |> Async.Ignore
 

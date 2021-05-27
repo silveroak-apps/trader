@@ -9,8 +9,9 @@
     <Compile Include="AnalysisTypes.fs" />
     <Compile Include="Exchanges\Binance\ApiTypes.fs" />
     <Compile Include="Exchanges\Binance\Spot\Trade.fs" />
-    <Compile Include="Exchanges\Binance\Futures\Trade.fs" />
+    <Compile Include="Exchanges\Binance\Futures\Common.fs" />
     <Compile Include="Exchanges\Binance\Futures\PositionListener.fs" />
+    <Compile Include="Exchanges\Binance\Futures\Trade.fs" />
     <Compile Include="Exchanges\Bybit\Futures\ApiClient.fs" />
     <Compile Include="Exchanges\Bybit\Futures\Trade.fs" />
     <Compile Include="Exchanges\Bybit\Futures\Market.fs" />
