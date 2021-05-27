@@ -51,7 +51,7 @@ type private SignalAction =
 | OPEN
 | CLOSE
 
-let private raiseSignal (exchangeId: int64) (a: SignalAction) (p: PositionSide) (candle: Analysis.HeikenAshi) =
+let private raiseSignal (a: SignalAction) (p: PositionSide) (candle: Analysis.HeikenAshi) =
     let isSignalInPlay () =
         AsyncResult.ofResult (Ok false)
     
@@ -59,7 +59,7 @@ let private raiseSignal (exchangeId: int64) (a: SignalAction) (p: PositionSide) 
         return ()
     }
 
-let raiseSignals (exchangeId: int64) (haCandlesResult: Async<Result<seq<Analysis.HeikenAshi>, KLineError>>) =
+let analyseCandles (haCandlesResult: Async<Result<seq<Analysis.HeikenAshi>, KLineError>>) =
     asyncResult {
         let! candles = haCandlesResult
 
@@ -85,9 +85,9 @@ let raiseSignals (exchangeId: int64) (haCandlesResult: Async<Result<seq<Analysis
 
             return!
                 if shouldLong
-                then raiseSignal exchangeId OPEN LONG latestCandle
+                then raiseSignal OPEN LONG latestCandle
                 elif shouldShort
-                then raiseSignal exchangeId OPEN SHORT latestCandle
+                then raiseSignal OPEN SHORT latestCandle
                 else AsyncResult.ofResult (Ok ())
         else
             Log.Warning ("Fewer than 3 candles so far, ignoring...")
@@ -99,6 +99,6 @@ let analyseHACandles (exchangeId: int64) (symbols: Symbol seq) =
     |> Seq.distinctBy (fun (Symbol s) -> s)
     |> Seq.map (getCandles exchangeId)
     |> Seq.map (AsyncResult.map Analysis.heikenAshi)
-    |> Seq.map (raiseSignals exchangeId)
+    |> Seq.map analyseCandles
     |> Async.Parallel
     |> Async.Ignore

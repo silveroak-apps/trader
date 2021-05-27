@@ -5,14 +5,6 @@ open System
 let Qty : (decimal -> decimal<qty>) = (*) 1M<qty>
 let Price : (decimal -> decimal<price>) = (*) 1M<price>
 
-type PositionSide = LONG | SHORT | NOT_APPLICABLE
-with
-    static member FromString (s: string) = 
-        match s.ToLower() with
-        | "long" -> LONG
-        | "short" -> SHORT
-        | _ -> NOT_APPLICABLE
-
 type OrderId = OrderId of string
 with
     override this.ToString() =
@@ -109,6 +101,7 @@ type OrderBookTickerInfo = {
 type SignalId = SignalId of int64
 type SignalCommandId = SignalCommandId of int64
 type ExchangeOrderInternalId = ExchangeOrderInternalId of int64
+type ExchangeId = ExchangeId of int64
 
 type SignalCommandStatus =
 | CREATED

@@ -49,5 +49,5 @@ module TradeFlowTests =
             Strategy = "does not matter"
             Status = "does not matter"
         }
-        let result = Futures.placeOrderWithRetryOnError mockExchange signalCmd |> Async.RunSynchronously
+        let result = Futures.placeOrderWithRetryOnError mockExchange signalCmd 0M |> Async.RunSynchronously
         result |> should be (ofCase <@ Error @>)
