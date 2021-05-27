@@ -6,16 +6,6 @@ open System
 open Serilog
 open Strategies.Common
 
-(*
-
-   If the strategy is enabled, we need to raise signal commands when:
-
-   for a given heiken-ashi sequence of candles:
-
-
-
-*)
-
 let getCandles (exchangeId: int64) (symbol: Symbol) =
     
     let klineTypeFor (Symbol s) =
@@ -34,7 +24,6 @@ let getCandles (exchangeId: int64) (symbol: Symbol) =
             Type = klineTypeFor symbol
         }
         mp.GetKLines q
-
 
 let private logKLineError (e: KLineError) = 
     match e with

@@ -243,7 +243,7 @@ let private getOrderBookCurrentPrice (Symbol s) =
                                         AskQty   = o.BestAskQuantity
                                         BidPrice = o.BestBidPrice
                                         BidQty   = o.BestBidQuantity
-                                        Symbol   = s
+                                        Symbol   = Symbol s
                                     })
                     |> (fun ob ->
                             match ob with
@@ -266,7 +266,7 @@ let private getOrderBookCurrentPrice (Symbol s) =
                                         AskQty   = o.BestAskQuantity
                                         BidPrice = o.BestBidPrice
                                         BidQty   = o.BestBidQuantity
-                                        Symbol   = s
+                                        Symbol   = Symbol s
                                     })
                     |> (fun ob ->
                             match ob with
@@ -276,9 +276,14 @@ let private getOrderBookCurrentPrice (Symbol s) =
     }
 
 let getExchange() = {
-        new IExchange with
+        new IFuturesExchange with
         member __.PlaceOrder o = placeOrder o
         member __.QueryOrder o = queryOrderStatus o
         member __.CancelOrder o = cancelOrder o
         member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice (Symbol s)
+        member __.Id = Types.ExchangeId ExchangeId
+        member __.Name = "Binance-Futures"
+
+        member __.GetFuturesPositions _symbolFilter = async { return (Error "NOT IMPLEMENTED YET") }
+        member __.TrackPositions _agent = async { return () }
     }

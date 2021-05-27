@@ -10,17 +10,20 @@
     <Compile Include="Exchanges\Binance\ApiTypes.fs" />
     <Compile Include="Exchanges\Binance\Spot\Trade.fs" />
     <Compile Include="Exchanges\Binance\Futures\Trade.fs" />
+    <Compile Include="Exchanges\Binance\Futures\PositionListener.fs" />
     <Compile Include="Exchanges\Bybit\Futures\ApiClient.fs" />
     <Compile Include="Exchanges\Bybit\Futures\Trade.fs" />
     <Compile Include="Exchanges\Bybit\Futures\Market.fs" />
+    <Compile Include="Exchanges\Bybit\Futures\PositionListener.fs" />
     <Compile Include="Exchanges\Simulator\Exchange.fs" />
+    <Compile Include="Exchanges.fs" />
     <Compile Include="Strategies\Analysis.fs" />
     <Compile Include="Strategies\Common.fs" />
-    <Compile Include="Strategies\WarOnFuturesKLines.fs" />
+    <Compile Include="Strategies\FuturesKLineAnalyser.fs" />
+    <Compile Include="Strategies\FuturesPositionAnalyser.fs" />
     <Compile Include="FuturesTrade.fs" />
     <Compile Include="SpotTrade.fs" />
     <Compile Include="Db.fs" />
-    <Compile Include="Positions.fs" />
     <Compile Include="WebApi.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

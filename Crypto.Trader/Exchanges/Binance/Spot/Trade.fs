@@ -443,7 +443,7 @@ let getOrderBookCurrentPrice (symbol: string) =
         | (200, responseText) ->
             let symbolTicker = BinanceOrderBookTickerResponse.Parse responseText
             return (Ok {
-                OrderBookTickerInfo.Symbol = symbolTicker.Symbol
+                OrderBookTickerInfo.Symbol = Symbol symbolTicker.Symbol
                 AskPrice = symbolTicker.AskPrice
                 BidPrice = symbolTicker.BidPrice
                 AskQty = symbolTicker.AskQty
@@ -513,4 +513,6 @@ let getExchange() = {
         member __.QueryOrder o = queryOrderStatus o
         member __.CancelOrder o = cancelOrder o
         member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice s
+        member __.Id = ExchangeId Binance.ExchangeId
+        member __.Name = "Binance-Spot"
     }

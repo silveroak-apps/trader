@@ -64,13 +64,24 @@ type OrderType =
 | LIMIT
 | MARKET
 
+type FuturesMarginType =
+| ISOLATED
+| CROSS
+| UNKNOWN
+with 
+    static member FromString (s: string) = 
+        match s.ToLower() with
+        | "isolated" -> ISOLATED
+        | "cross"    -> CROSS
+        | _          -> UNKNOWN
+
 type OrderInputInfo = {
     SignalId: int64
     OrderSide: Types.OrderSide
     Quantity: decimal<qty>
     Price: decimal<price>
     Symbol: Symbol
-    PositionSide: PositionSide
+    PositionSide: Types.PositionSide
     OrderType: OrderType
 }
 
@@ -91,11 +102,25 @@ type OrderInfo = {
 }
 
 type OrderBookTickerInfo = {
-    Symbol: string
+    Symbol: Symbol
     BidPrice: decimal
     BidQty: decimal
     AskPrice: decimal
     AskQty: decimal
+}
+
+type ExchangePosition = {
+    Leverage: decimal
+    Side: PositionSide
+    Symbol: Symbol
+    EntryPrice: decimal
+    MarkPrice: decimal
+    MarginType: FuturesMarginType
+    Amount: decimal
+    RealisedPnL: decimal
+    UnRealisedPnL: decimal
+    IsolatedMargin: decimal
+    LiquidationPrice: decimal
 }
 
 type SignalId = SignalId of int64
@@ -103,12 +128,34 @@ type SignalCommandId = SignalCommandId of int64
 type ExchangeOrderInternalId = ExchangeOrderInternalId of int64
 type ExchangeId = ExchangeId of int64
 
+type SignalAction = 
+| OPEN
+| CLOSE
+| INCREASE
+| DECREASE
+| UNKNOWN
+with       
+    override this.ToString() =
+        match this with
+        | OPEN -> "OPEN"
+        | CLOSE -> "CLOSE"
+        | INCREASE -> "INCREASE"
+        | DECREASE -> "DECREASE"
+        | UNKNOWN -> "UNKNOWN"
+    
+    static member FromString (s: string) = 
+        match s.ToLower() with
+        | "open" -> OPEN
+        | "close" -> CLOSE
+        | "increase" -> INCREASE
+        | "decrease" -> DECREASE
+        | _ -> UNKNOWN
+
 type SignalCommandStatus =
 | CREATED
 | EXPIRED
 | FAILED
 | SUCCESS
-
 with       
     override this.ToString() =
         match this with
@@ -117,8 +164,21 @@ with
         | FAILED  -> "FAILED"
         | SUCCESS   -> "SUCCESS"
 
+type PositionCommand = 
+    | FuturesPositionUpdate of ExchangeId * ExchangePosition seq
+    | FuturesBookPrice of ExchangeId * OrderBookTickerInfo
+    | RefreshPositions
+
 type IExchange = 
     abstract member PlaceOrder : OrderInputInfo -> Async<Result<OrderInfo, OrderError>>
     abstract member QueryOrder : OrderQueryInfo -> Async<OrderStatus>
     abstract member CancelOrder : OrderQueryInfo -> Async<Result<bool, string>>
     abstract member GetOrderBookCurrentPrice : string -> Async<Result<OrderBookTickerInfo, string>>
+    abstract member Name: string
+    abstract member Id: ExchangeId
+
+type IFuturesExchange =
+    inherit IExchange
+    abstract member GetFuturesPositions: string -> Async<Result<ExchangePosition seq, string>>
+    abstract member TrackPositions: MailboxProcessor<PositionCommand> -> Async<unit>
+
