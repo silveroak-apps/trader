@@ -233,7 +233,7 @@ let getExchange() = {
         member __.CancelOrder o = cancelOrder o
         member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice (Symbol s)
         member __.Id = Types.ExchangeId ExchangeId
-        member __.Name = "Binance-Futures"
+        member __.Name = "BinanceFutures"
 
         member __.GetFuturesPositions _symbolFilter = async { return (Error "NOT IMPLEMENTED YET") }
         member __.TrackPositions (agent, symbols) = async { 

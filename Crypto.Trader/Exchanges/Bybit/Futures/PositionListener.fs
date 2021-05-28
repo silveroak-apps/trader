@@ -14,10 +14,8 @@ let getExchange1() = {
         failwith "Not Implemented"
     member __.GetOrderBookCurrentPrice(o: string): Async<Result<OrderBookTickerInfo,string>> = 
         failwith "Not Implemented"
-    member __.Id: ExchangeId = 
-        failwith "Not Implemented"
-    member __.Name: string = 
-        failwith "Not Implemented"
+    member __.Id   = ExchangeId Common.ExchangeId
+    member __.Name = "BybitFutures"
     member __.PlaceOrder(o: OrderInputInfo): Async<Result<OrderInfo,OrderError>> = 
         failwith "Not Implemented"
     member __.QueryOrder(o: OrderQueryInfo): Async<OrderStatus> = 

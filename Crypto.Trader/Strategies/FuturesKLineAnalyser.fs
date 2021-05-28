@@ -6,8 +6,17 @@ open System
 open Serilog
 open Strategies.Common
 open Types
+open System.Diagnostics
+open System.Collections.Concurrent
 
-let getCandles (exchangeId: ExchangeId) (symbol: Symbol) =
+type private CandleKey = {
+    ExchangeId: ExchangeId
+    Symbol: Symbol
+}
+
+let private candlesFetchTimes = new ConcurrentDictionary<CandleKey, DateTimeOffset>()
+
+let private getCandles (exchangeId: ExchangeId) (symbol: Symbol) =
     
     let klineTypeFor (Symbol s) =
         if s.EndsWith("USDT")
@@ -35,29 +44,36 @@ let private logKLineError (e: KLineError) =
 
 let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSide) (candle: Analysis.HeikenAshi) =    
     asyncResult {
-        Log.Information ("About to raise a market event for {Action} {PositionSide} {Symbol} on {Exchange}",
-            a, p, candle.Symbol)
-        let (Symbol symbol) = candle.Symbol
-        let! exchange = Trader.Exchanges.lookupExchange exchangeId
-        let marketEvent = {
-            MarketEvent.Name = "futures_kline_war_1m"
-            Price = candle.OriginalClose
-            Symbol = symbol.ToUpperInvariant()
-            Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
-            TimeFrame = "1" // hardcode for now
-            Exchange = exchange.Name
-            Category = "futures_kline_war"
-            Contracts = 0M // no contracts for now: TODO pull from config or somewhere else?
-        }
-        let! _ = raiseMarketEvent marketEvent
-        Log.Information("Raised a market event to close the long: {MarketEvent}", marketEvent)
+        let timeDiff = DateTimeOffset.UtcNow - candle.OpenTime.ToUniversalTime()
+        if timeDiff > TimeSpan.FromSeconds 5.0
+        then
+            return! Result.Error 
+                (sprintf "Error raising event: Candle data is out of date for exchange %A, symbol: %A. Diff: %A" 
+                    exchangeId candle.Symbol timeDiff)
+        else
+            Log.Information ("About to raise a market event for {Action} {PositionSide} {Symbol} on {Exchange}",
+                a, p, candle.Symbol)
+            let (Symbol symbol) = candle.Symbol
+            let! exchange = Trader.Exchanges.lookupExchange exchangeId
+            let marketEvent = {
+                MarketEvent.Name = "futures_kline_war_1m"
+                Price = candle.OriginalClose
+                Symbol = symbol.ToUpperInvariant()
+                Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
+                TimeFrame = "1" // hardcode for now
+                Exchange = exchange.Name
+                Category = "futures_kline_war"
+                Contracts = 0M // no contracts for now: TODO pull from config or somewhere else?
+            }
+            let! _ = raiseMarketEvent marketEvent
+            Log.Information("Raised a market event to close the long: {MarketEvent}", marketEvent)
+
     } |> AsyncResult.mapError KLineError.Error
 
-let analyseCandles (exchangeId: ExchangeId) (haCandlesResult: Async<Result<seq<Analysis.HeikenAshi>, KLineError>>) =
+let private analyseCandles (exchangeId: ExchangeId) (haCandles: seq<Analysis.HeikenAshi>) =
     asyncResult {
-        let! candles = haCandlesResult
 
-        let candleArray = Seq.toArray candles |> Array.sortByDescending (fun c -> c.OpenTime)
+        let candleArray = Seq.toArray haCandles |> Array.sortByDescending (fun c -> c.OpenTime)
         
         if Array.length candleArray > 2
         then
@@ -77,6 +93,18 @@ let analyseCandles (exchangeId: ExchangeId) (haCandlesResult: Async<Result<seq<A
 
             let latestCandle = candleArray.[0]
 
+            Log.Debug ("Analysing HA candles for {Exchange}:{Symbol}. {OpenTime}. FB Low-Open: {FBDiff} {FB}, FT High-Open: {FTDiff} {FT}, Green: {G}, Red: {R}",
+                    exchangeId,
+                    latestCandle.Symbol.ToString(),
+                    latestCandle.OpenTime,
+                    latestCandle.Low - latestCandle.Open,
+                    fbCandle.[0],
+                    latestCandle.High - latestCandle.Open,
+                    ftCandle.[0],
+                    greenCandle.[0],
+                    redCandle.[0]
+                )
+
             return!
                 if shouldLong
                 then raiseEvent exchangeId OPEN LONG latestCandle
@@ -88,22 +116,68 @@ let analyseCandles (exchangeId: ExchangeId) (haCandlesResult: Async<Result<seq<A
 
     } |> Async.map (Result.teeError logKLineError)
 
-let analyseHACandles (exchangeId: ExchangeId) (symbols: Symbol seq) =
-    symbols
-    |> Seq.distinctBy (fun (Symbol s) -> s)
-    |> Seq.map (getCandles exchangeId)
-    |> Seq.map (AsyncResult.map Analysis.heikenAshi)
-    |> Seq.map (analyseCandles exchangeId)
-    |> Async.Parallel
+let private teeUpdateFetchTime (exchangeId: ExchangeId) (symbol: Symbol) (candles: seq<KLine>) =
+    let candleKey = 
+        {
+            CandleKey.ExchangeId = exchangeId
+            Symbol = symbol
+        }
+    let candlesEmptyOrTooOld = 
+        candles
+        |> Seq.tryHead
+        |> Option.map(fun candle -> 
+                (DateTimeOffset.UtcNow - candle.OpenTime).TotalSeconds > 60.0
+            )
+        |> Option.defaultValue true
+    if candlesFetchTimes.ContainsKey candleKey && candlesEmptyOrTooOld
+    then
+        // remove it so that we can try quickly again
+        let value = candlesFetchTimes.[candleKey]
+        candlesFetchTimes.TryRemove(candleKey, ref value) |> ignore
+    else
+        candlesFetchTimes.[candleKey] <- (candles |> Seq.head |> (fun c -> c.OpenTime))
+
+    candles 
+
+let private analyseHACandles (exchangeId: ExchangeId) (symbol: Symbol) =
+    getCandles exchangeId symbol
+    |> AsyncResult.map (teeUpdateFetchTime exchangeId symbol)
+    |> AsyncResult.map Analysis.heikenAshi
+    |> AsyncResult.map (analyseCandles exchangeId)
     |> Async.Ignore
 
+let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> Async<unit>) (nameForLogging: string)  =
+    async {
+        try
+            let sw = Stopwatch.StartNew ()
+            do! fn ()
+            sw.Stop ()
+            Log.Verbose ("{TimerFunctionName} took {TimerFunctionDuration} milliseconds", nameForLogging, sw.Elapsed.TotalMilliseconds)
+        with e -> Log.Warning (e, "Error running function {TimerFunctionName} on timer. Continuing next time...", nameForLogging)
+        
+        let interval = intervalFn()
+        Log.Verbose ("Waiting for {Interval} before another KLine fetch", interval)
+        do! Async.Sleep (int interval.TotalMilliseconds)
+        do! repeatEveryInterval intervalFn fn nameForLogging 
+    }
+
 let startAnalysis () =
-    let nSeconds = TimeSpan.FromSeconds 60.0
     let exchanges = Trader.Exchanges.knownExchanges.Values
     let symbols = Trader.Exchanges.allSymbols |> Seq.map Symbol
-    exchanges
-    |> Seq.map (fun exchange ->
-            repeatEvery nSeconds (fun () -> analyseHACandles exchange.Id symbols) "FuturesKLineAnalyser"
+    Seq.allPairs exchanges symbols
+    |> Seq.map (fun (exchange, symbol) ->
+            let intervalFn () =
+                let candleKey = {
+                    CandleKey.ExchangeId = exchange.Id
+                    Symbol = symbol
+                }
+                match candlesFetchTimes.TryGetValue candleKey with
+                | true, _ ->
+                    let secondsToMinuteBoundary = DateTimeOffset.UtcNow.Second // will be between 0 and 59
+                    TimeSpan.FromSeconds <| float (60 - secondsToMinuteBoundary + 1)
+                | _ -> TimeSpan.FromSeconds 1.0
+
+            repeatEveryInterval intervalFn (fun () -> analyseHACandles exchange.Id symbol) "FuturesKLineAnalyser"
         )
     |> Async.Parallel
     |> Async.Ignore

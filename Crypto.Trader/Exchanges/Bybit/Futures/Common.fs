@@ -1,4 +1,4 @@
-module Bybit.Futures.Types
+module Bybit.Futures.Common
 
 (*
     Bybit InversePerpetual contracts are like Binance COIN-M margined perpetual contracts
@@ -13,3 +13,5 @@ type BybitKLine = IO.Swagger.Model.KlineRes
 
 type BybitTradeApi = IO.Swagger.Api.ExecutionApi
 type BybitMarketApi = IO.Swagger.Api.MarketApi
+
+let ExchangeId = 5L

@@ -41,23 +41,23 @@ let main (argv: string[]) =
         use _p = Context.LogContext.PushProperty("PlaceRealOrders", placeRealOrders)
         Log.Information ("Setting: Place real orders = {PlaceRealOrders}", placeRealOrders)
         
-        Log.Information ("Starting futures trader...")
-        run (Trade.Futures.processValidSignals
-                            Db.getFuturesSignalCommands
-                            Db.setSignalCommandsComplete
-                            Db.getExchangeOrder
-                            Db.saveOrder
-                            Db.getPositionSize)
-                            placeRealOrders |> Async.Start
+        // Log.Information ("Starting futures trader...")
+        // run (Trade.Futures.processValidSignals
+        //                     Db.getFuturesSignalCommands
+        //                     Db.setSignalCommandsComplete
+        //                     Db.getExchangeOrder
+        //                     Db.saveOrder
+        //                     Db.getPositionSize)
+        //                     placeRealOrders |> Async.Start
 
         // Log.Information ("Starting spot trader...")
         // run Trade.Spot.processValidSignals placeRealOrders |> Async.Start
 
         // start analysers
-        Strategies.FuturesPositionAnalyser.trackPositions
-            Trader.Exchanges.knownExchanges.Values
-            Trader.Exchanges.allSymbols
-        |> Async.Start
+        // Strategies.FuturesPositionAnalyser.trackPositions
+        //     Trader.Exchanges.knownExchanges.Values
+        //     Trader.Exchanges.allSymbols
+        // |> Async.Start
 
         Strategies.FuturesKLineAnalyser.startAnalysis ()
         |> Async.Start

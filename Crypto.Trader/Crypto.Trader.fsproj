@@ -12,10 +12,11 @@
     <Compile Include="Exchanges\Binance\Futures\Common.fs" />
     <Compile Include="Exchanges\Binance\Futures\PositionListener.fs" />
     <Compile Include="Exchanges\Binance\Futures\Trade.fs" />
-    <Compile Include="Exchanges\Bybit\Futures\ApiClient.fs" />
+    <Compile Include="Exchanges\Binance\Futures\Market.fs" />
+    <Compile Include="Exchanges\Bybit\Futures\Common.fs" />
+    <Compile Include="Exchanges\Bybit\Futures\PositionListener.fs" />
     <Compile Include="Exchanges\Bybit\Futures\Trade.fs" />
     <Compile Include="Exchanges\Bybit\Futures\Market.fs" />
-    <Compile Include="Exchanges\Bybit\Futures\PositionListener.fs" />
     <Compile Include="Exchanges\Simulator\Exchange.fs" />
     <Compile Include="Exchanges.fs" />
     <Compile Include="Strategies\Analysis.fs" />

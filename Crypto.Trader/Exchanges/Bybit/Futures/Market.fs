@@ -2,7 +2,7 @@ module Bybit.Futures.Market
 
 open AnalysisTypes
 open FsToolkit.ErrorHandling
-open Bybit.Futures.Types
+open Bybit.Futures.Common
 open System
 
 let private fromBybitKLine (k: BybitKLine): KLine =
@@ -58,5 +58,4 @@ let getMarketDataProvider() = {
         new IMarketDataProvider with
         member __.GetKLines q = getKLines q
     }
-
-let ExchangeId = 5L
+    
