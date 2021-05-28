@@ -8,6 +8,7 @@ open Binance.ApiTypes
 open Types
 open Binance.Net.Interfaces.SubClients.Futures
 open Serilog
+open Exchanges.Common
 
 let ExchangeId = 4L
 
@@ -16,7 +17,7 @@ let private cfg = appConfig.GetSection "Binance"
 
 let getApiKeyCfg () = 
     {
-        BinanceApiKey.Key = cfg.Item "FuturesKey"
+        ApiKey.Key = cfg.Item "FuturesKey"
         Secret = cfg.Item "FuturesSecret"
     }
 
@@ -139,7 +140,7 @@ let private placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>
 
         let! orderResponse = 
             client.PlaceOrderAsync(
-                    newClientOrderId = string o.SignalId,
+                    newClientOrderId = string o.SignalCommandId,
                     symbol           = s,
                     side             = orderSide,
                     ``type``         = orderType,

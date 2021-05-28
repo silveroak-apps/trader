@@ -76,7 +76,7 @@ with
         | _          -> UNKNOWN
 
 type OrderInputInfo = {
-    SignalId: int64
+    SignalCommandId: int64
     OrderSide: Types.OrderSide
     Quantity: decimal<qty>
     Price: decimal<price>

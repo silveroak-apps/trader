@@ -12,11 +12,6 @@ let serializerSettings =
                     |]
             )
 
-type BinanceApiKey = {
-    Key : string
-    Secret : string
-}
-
 type UnixTime = int64
 
 (*

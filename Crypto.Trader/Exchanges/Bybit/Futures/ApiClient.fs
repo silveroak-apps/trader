@@ -6,10 +6,13 @@ module Bybit.Futures.Types
 *)
 
 type BybitCoinMKlineApi = IO.Swagger.Api.KlineApi
-type BybitUSDTKlineApi = IO.Swagger.Api.LinearKlineApi
+type BybitUSDTKlineApi  = IO.Swagger.Api.LinearKlineApi
 
 type BybitKLineBase = IO.Swagger.Model.KlineBase
-type BybitKLine = IO.Swagger.Model.KlineRes
+type BybitKLine     = IO.Swagger.Model.KlineRes
 
-type BybitTradeApi = IO.Swagger.Api.ExecutionApi
+type BybitCoinMApi  =  IO.Swagger.Api.OrderApi
+type BybitUSDTMApi  = IO.Swagger.Api.LinearOrderApi
 type BybitMarketApi = IO.Swagger.Api.MarketApi
+type BybitConfig    = IO.Swagger.Client.Configuration
+type BybitOrderResponse = IO.Swagger.Model.OrderResBase

@@ -35,7 +35,7 @@ module Exchange =
 
         async {
             return Ok <| {
-                OrderInfo.ClientOrderId = ClientOrderId (string o.SignalId)
+                OrderInfo.ClientOrderId = ClientOrderId (string o.SignalCommandId)
                 Quantity = o.Quantity
                 Price = o.Price
                 Symbol = o.Symbol

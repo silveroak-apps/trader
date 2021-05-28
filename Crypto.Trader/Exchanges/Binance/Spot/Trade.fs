@@ -5,6 +5,7 @@ open System
 open Types
 open System.Text
 open Serilog
+open Exchanges.Common
 
 open Binance.ApiTypes
 open System.Net.Http
@@ -24,7 +25,7 @@ type ValidTradeRange = {
 let private apiKey = 
     let cfg = appConfig.GetSection "Binance"
     { 
-        BinanceApiKey.Key = cfg.Item "SpotKey"
+        ApiKey.Key = cfg.Item "SpotKey"
         Secret = cfg.Item "SpotSecret"
     }
 
@@ -480,7 +481,7 @@ let placeOrder (order: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
 
         match qtyPriceResult with
         | Ok (normalisedQty, normalisedPrice) -> 
-            let! orderResult = placeOrder' order.SignalId orderSide  order.Symbol normalisedQty normalisedPrice
+            let! orderResult = placeOrder' order.SignalCommandId orderSide  order.Symbol normalisedQty normalisedPrice
             match orderResult with
             | Ok response ->
                 let orderTime = response.TransactTime |> DateTimeOffset.FromUnixTimeMilliseconds

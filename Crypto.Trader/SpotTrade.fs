@@ -210,7 +210,7 @@ let private placeOrder getOrdersForSignal (saveOrder: ExchangeOrder -> Async<Res
                                 orderPrice
                                 )
                             let orderInput = {
-                                OrderInputInfo.SignalId = s.SignalId
+                                OrderInputInfo.SignalCommandId = s.SignalId //TODO: This needs to be signal command id
                                 OrderSide = orderSide
                                 Price = orderPrice * 1M<price>
                                 Symbol = sym
@@ -229,7 +229,7 @@ let private placeOrder getOrdersForSignal (saveOrder: ExchangeOrder -> Async<Res
                                         Symbol = string orderInput.Symbol
                                         Price = orderInput.Price / 1M<price>
                                         OriginalQty = orderInput.Quantity / 1M<qty>
-                                        ExchangeOrderIdSecondary = string orderInput.SignalId
+                                        ExchangeOrderIdSecondary = string orderInput.SignalCommandId
                                         SignalId = s.SignalId
                                         UpdatedTime = DateTime.UtcNow
                                         ExchangeId = s.ExchangeId

@@ -112,7 +112,7 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) maxSlippage =
                 orderPrice
                 )
             let orderInput = {
-                OrderInputInfo.SignalId = s.SignalId
+                OrderInputInfo.SignalCommandId = s.SignalId
                 OrderSide = orderSide
                 Price = orderPrice * 1M<price>
                 Symbol = sym

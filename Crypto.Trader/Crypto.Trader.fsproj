@@ -7,6 +7,7 @@
   <ItemGroup>
     <Compile Include="Types.fs" />
     <Compile Include="AnalysisTypes.fs" />
+    <Compile Include="Exchanges\Exchanges.fs" />
     <Compile Include="Exchanges\Binance\ApiTypes.fs" />
     <Compile Include="Exchanges\Binance\Spot\Trade.fs" />
     <Compile Include="Exchanges\Binance\Futures\Trade.fs" />
