@@ -4,7 +4,7 @@ open System.Text.Json
 open Types
 
 let knownMarketDataProviders = dict [
-    // ( ExchangeId Binance.Futures.Trade.ExchangeId, Binance.Futures.Market.getMarketDataProvider () )
+    ( ExchangeId Binance.Futures.Trade.ExchangeId, Binance.Futures.Market.getMarketDataProvider () )
     ( ExchangeId Bybit.Futures.Common.ExchangeId,  Bybit.Futures.Market.getMarketDataProvider ()   )
 ]
 

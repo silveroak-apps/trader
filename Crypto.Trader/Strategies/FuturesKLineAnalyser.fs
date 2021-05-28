@@ -83,13 +83,17 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: seq<Analysis.Hei
             let greenCandle = candleArray |> Array.map (fun c -> c.Close > c.Open)
             let high        = candleArray |> Array.map (fun c -> c.High)
             let low         = candleArray |> Array.map (fun c -> c.Low)
-        
-            // 0 is latest candle, 1 is previous and so on...
-            let shouldLong = 
-                fbCandle.[0] && fbCandle.[1] && greenCandle.[2] && (high.[0] > high.[1])
+            let close       = candleArray |> Array.map (fun c -> c.Close)
+            let open_        = candleArray |> Array.map (fun c -> c.Open)
 
+            // 0 is latest candle, 1 is previous and so on...
+            //close > close[1] and close[1] > close[2] and fbCandle and fbCandle[1] 
+            let shouldLong = 
+                fbCandle.[0] && fbCandle.[1] && (close.[0] > close.[1]) && (close.[1] > close.[2])
+
+            //open < open[1] and open[1] < open[2] and ftCandle and ftCandle[1] 
             let shouldShort =
-                ftCandle.[0] && ftCandle.[1] && redCandle.[2] && (low.[0] < low.[1])
+                ftCandle.[0] && ftCandle.[1] && (open_.[0] < open_.[1]) && (open_.[1] < open_.[2])
 
             let latestCandle = candleArray.[0]
 
@@ -143,7 +147,7 @@ let private analyseHACandles (exchangeId: ExchangeId) (symbol: Symbol) =
     getCandles exchangeId symbol
     |> AsyncResult.map (teeUpdateFetchTime exchangeId symbol)
     |> AsyncResult.map Analysis.heikenAshi
-    |> AsyncResult.map (analyseCandles exchangeId)
+    |> AsyncResult.bind (analyseCandles exchangeId)
     |> Async.Ignore
 
 let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> Async<unit>) (nameForLogging: string)  =
@@ -154,12 +158,13 @@ let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> 
             sw.Stop ()
             Log.Verbose ("{TimerFunctionName} took {TimerFunctionDuration} milliseconds", nameForLogging, sw.Elapsed.TotalMilliseconds)
         with e -> Log.Warning (e, "Error running function {TimerFunctionName} on timer. Continuing next time...", nameForLogging)
-        
+
         let interval = intervalFn()
         Log.Verbose ("Waiting for {Interval} before another KLine fetch", interval)
         do! Async.Sleep (int interval.TotalMilliseconds)
         do! repeatEveryInterval intervalFn fn nameForLogging 
     }
+    
 
 let startAnalysis () =
     let exchanges = Trader.Exchanges.knownExchanges.Values
