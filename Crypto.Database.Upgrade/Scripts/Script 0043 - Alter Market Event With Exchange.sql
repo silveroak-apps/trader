@@ -1,0 +1,1 @@
+ALTER TABLE public.market_event ADD exchange bigint;
