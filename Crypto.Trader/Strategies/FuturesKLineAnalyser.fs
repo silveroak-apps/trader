@@ -1,12 +1,13 @@
-module Strategies.WarOnFuturesKLines
+module Strategies.FuturesKLineAnalyser
 
 open AnalysisTypes
 open FsToolkit.ErrorHandling
 open System
 open Serilog
 open Strategies.Common
+open Types
 
-let getCandles (exchangeId: int64) (symbol: Symbol) =
+let getCandles (exchangeId: ExchangeId) (symbol: Symbol) =
     
     let klineTypeFor (Symbol s) =
         if s.EndsWith("USDT")
@@ -14,7 +15,7 @@ let getCandles (exchangeId: int64) (symbol: Symbol) =
         else CoinMFutures
 
     match knownMarketDataProviders.TryGetValue exchangeId with
-    | false, _ -> AsyncResult.ofResult (Result.Error (KLineError.Error <| sprintf "Unknown market data provider: %d" exchangeId))
+    | false, _ -> AsyncResult.ofResult (Result.Error (KLineError.Error <| sprintf "Unknown market data provider: %A" exchangeId))
     | true, mp ->
         let q = {
             KLineQuery.IntervalMinutes = 1
@@ -32,23 +33,27 @@ let private logKLineError (e: KLineError) =
     | UnsupportedKlineTypeError s -> sprintf "UnsupportedKLineTypeError: %s" s
     |> Log.Error
 
-type private PositionSide =
-| LONG
-| SHORT
-
-type private SignalAction =
-| OPEN
-| CLOSE
-
-let private raiseSignal (a: SignalAction) (p: PositionSide) (candle: Analysis.HeikenAshi) =
-    let isSignalInPlay () =
-        AsyncResult.ofResult (Ok false)
-    
+let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSide) (candle: Analysis.HeikenAshi) =    
     asyncResult {
-        return ()
-    }
+        Log.Information ("About to raise a market event for {Action} {PositionSide} {Symbol} on {Exchange}",
+            a, p, candle.Symbol)
+        let (Symbol symbol) = candle.Symbol
+        let! exchange = Trader.Exchanges.lookupExchange exchangeId
+        let marketEvent = {
+            MarketEvent.Name = "futures_kline_war_1m"
+            Price = candle.OriginalClose
+            Symbol = symbol.ToUpperInvariant()
+            Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
+            TimeFrame = "1" // hardcode for now
+            Exchange = exchange.Name
+            Category = "futures_kline_war"
+            Contracts = 0M // no contracts for now: TODO pull from config or somewhere else?
+        }
+        let! _ = raiseMarketEvent marketEvent
+        Log.Information("Raised a market event to close the long: {MarketEvent}", marketEvent)
+    } |> AsyncResult.mapError KLineError.Error
 
-let analyseCandles (haCandlesResult: Async<Result<seq<Analysis.HeikenAshi>, KLineError>>) =
+let analyseCandles (exchangeId: ExchangeId) (haCandlesResult: Async<Result<seq<Analysis.HeikenAshi>, KLineError>>) =
     asyncResult {
         let! candles = haCandlesResult
 
@@ -74,20 +79,31 @@ let analyseCandles (haCandlesResult: Async<Result<seq<Analysis.HeikenAshi>, KLin
 
             return!
                 if shouldLong
-                then raiseSignal OPEN LONG latestCandle
+                then raiseEvent exchangeId OPEN LONG latestCandle
                 elif shouldShort
-                then raiseSignal OPEN SHORT latestCandle
-                else AsyncResult.ofResult (Ok ())
+                then raiseEvent exchangeId OPEN SHORT latestCandle
+                else AsyncResult.ofResult(Ok ())
         else
             Log.Warning ("Fewer than 3 candles so far, ignoring...")
 
     } |> Async.map (Result.teeError logKLineError)
 
-let analyseHACandles (exchangeId: int64) (symbols: Symbol seq) =
+let analyseHACandles (exchangeId: ExchangeId) (symbols: Symbol seq) =
     symbols
     |> Seq.distinctBy (fun (Symbol s) -> s)
     |> Seq.map (getCandles exchangeId)
     |> Seq.map (AsyncResult.map Analysis.heikenAshi)
-    |> Seq.map analyseCandles
+    |> Seq.map (analyseCandles exchangeId)
+    |> Async.Parallel
+    |> Async.Ignore
+
+let startAnalysis () =
+    let nSeconds = TimeSpan.FromSeconds 60.0
+    let exchanges = Trader.Exchanges.knownExchanges.Values
+    let symbols = Trader.Exchanges.allSymbols |> Seq.map Symbol
+    exchanges
+    |> Seq.map (fun exchange ->
+            repeatEvery nSeconds (fun () -> analyseHACandles exchange.Id symbols) "FuturesKLineAnalyser"
+        )
     |> Async.Parallel
     |> Async.Ignore

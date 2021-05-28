@@ -37,35 +37,6 @@ type private PositionAnalysis = {
 
 let private positions = new ConcurrentDictionary<PositionKey, PositionAnalysis>()
 
-type private ContractDetails = {
-    Multiplier: int // i.e if it is contracts, how many USD is 1 contract
-}
-
-// TODO move this to config / db?
-// UnitName is what the 'quantity' refers to in the API calls.
-// From there we derive a USD value - if it is USDT, we leave it as is.
-// If it is 'CONT' or contracts, we can convert to USD
-let private usdtSymbols  = 
-    dict [ 
-        ("BNBUSDT", { Multiplier = 1 })
-        ("BTCUSDT", { Multiplier = 1 })
-        ("ETHUSDT", { Multiplier = 1 })
-        ("ADAUSDT", { Multiplier = 1 })
-        ("DOTUSDT", { Multiplier = 1 })
-        ("DOGEUSDT", { Multiplier = 1 })
-        ("MATICUSDT", { Multiplier = 1 })
-        ("LUNAUSDT", { Multiplier = 1 })
-    ]
-
-let private coinMSymbols =
-    dict [ 
-        ("BNBUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
-        ("BTCUSD_PERP", { Multiplier = 100 }) // 1 cont = 100 USD
-        ("ETHUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
-        ("ADAUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
-        ("DOTUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
-    ]
-
 let private makePositionKey (Symbol symbol) (positionSide: PositionSide) = PositionKey <| sprintf "%s-%s" symbol (positionSide.ToString())
 
 let private closeSignal (exchangeName: string) (position: PositionAnalysis) (price: OrderBookTickerInfo) =

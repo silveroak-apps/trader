@@ -1,9 +1,11 @@
 module Strategies.Common
 open System.Net.Http
 open System.Text.Json
+open Types
 
 let knownMarketDataProviders = dict [
-    ( Bybit.Futures.Market.ExchangeId, Bybit.Futures.Market.getMarketDataProvider () )
+    // ( ExchangeId Binance.Futures.Market.ExchangeId, Binance.Futures.Market.getMarketDataProvider () )
+    ( ExchangeId Bybit.Futures.Market.ExchangeId, Bybit.Futures.Market.getMarketDataProvider () )
 ]
 
 type MarketEvent = {
