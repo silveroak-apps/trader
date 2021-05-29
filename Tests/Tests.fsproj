@@ -13,6 +13,7 @@
     </Content>
     <Compile Include="DbDateTimeTests.fs" />
     <Compile Include="DbTests.fs" />
+    <Compile Include="AnalysisTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

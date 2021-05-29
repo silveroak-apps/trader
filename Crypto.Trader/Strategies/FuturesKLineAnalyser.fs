@@ -28,9 +28,9 @@ let private getCandles (exchangeId: ExchangeId) (symbol: Symbol) =
     | true, mp ->
         let q = {
             KLineQuery.IntervalMinutes = 1
-            Limit = 5
+            Limit = 15
             Symbol = symbol
-            OpenTime = DateTimeOffset.UtcNow.AddMinutes -5.0
+            OpenTime = DateTimeOffset.UtcNow.AddMinutes -15.0
             Type = klineTypeFor symbol
         }
         mp.GetKLines q
@@ -57,7 +57,7 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
             let! exchange = Trader.Exchanges.lookupExchange exchangeId
             let marketEvent = {
                 MarketEvent.Name = "futures_kline_war_1m"
-                Price = candle.OriginalClose
+                Price = candle.Original.Close
                 Symbol = symbol.ToUpperInvariant()
                 Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
                 TimeFrame = "1" // hardcode for now
