@@ -5,14 +5,14 @@
     <GenerateProgramFile>False</GenerateProgramFile>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="TradeFlowTests.fs" />
-    <Compile Include="FuturesTradeTests.fs" />
+    <!-- <Compile Include="TradeFlowTests.fs" />
+    <Compile Include="FuturesTradeTests.fs" /> -->
     <Content Include="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Compile Include="DbDateTimeTests.fs" />
-    <Compile Include="DbTests.fs" />
+    <!-- <Compile Include="DbDateTimeTests.fs" />
+    <Compile Include="DbTests.fs" /> -->
     <Compile Include="AnalysisTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

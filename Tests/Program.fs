@@ -10,6 +10,6 @@ let main _ =
                         .CreateLogger()
 
     // GetBuyOrderForSell().``GetBuyOrderForSell Returns correct data for existing signal``()
-    IntegrationTests.FuturesTrade.``Process valid signals expires old signal commands``()
+   // IntegrationTests.FuturesTrade.``Process valid signals expires old signal commands``()
     Console.ReadLine() |> ignore
     0

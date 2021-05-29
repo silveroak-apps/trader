@@ -57,10 +57,10 @@ let ``Heiken Ashi is calculated correctly`` () =
 
     let haKLines = Analysis.heikenAshi klines
     
-    let actualHAClose = haKLines |> Seq.map (fun ha -> ha.Close)
-    let actualHAOpen = haKLines |> Seq.map (fun ha -> ha.Open)
-    let actualHAHigh = haKLines |> Seq.map (fun ha -> ha.High)
-    let actualHALow = haKLines |> Seq.map (fun ha -> ha.Low)
+    let actualHAClose = haKLines |> Seq.map (fun c -> c.Close)
+    let actualHAOpen = haKLines |> Seq.map (fun c -> c.Open)
+    let actualHAHigh = haKLines |> Seq.map (fun c -> c.High)
+    let actualHALow = haKLines |> Seq.map (fun c -> c.Low)
 
     actualHAClose |> should equal expectedHAClose
     actualHAOpen |> should equal expectedHAOpen

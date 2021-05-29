@@ -41,7 +41,7 @@ candlestick open or the current Heikin-Ashi candlestick close.
 *)
 let heikenAshi (candles: KLine seq)  =
     let toHA1 (current: KLine) =
-        {
+        let r = {
             HeikenAshi.OpenTime = current.OpenTime
             IntervalMinutes = current.IntervalMinutes
             Close = (current.Open + current.Close + current.High + current.Low) / 4M // Calc from Candles
@@ -53,26 +53,27 @@ let heikenAshi (candles: KLine seq)  =
 
             Original = current
         }
-    let toHA2 ((previousHA, currentHA): HeikenAshi * HeikenAshi) =
-        let newOpen = (previousHA.Open + previousHA.Close) / 2M
-        {
-            currentHA with
-                Open = newOpen
-                High = [ currentHA.Original.High; newOpen; currentHA.Close ] |> List.max
-                Low =  [ currentHA.Original.Low;  newOpen; currentHA.Close ] |> List.min
-        }
+        printfn "Current Open - %f Open - %f, Current Close - %f, Close - %f" current.Open r.Open current.Close r.Close
+        r
+        
 
-    let haCloseValues =
-        candles
-        |> Seq.map (fun current -> 
-                (current.Open + current.Close + current.High + current.Low) / 4M
-            )
-
-    // let haOpenValues =
-    //     let firstValue = candles |> Seq.tryHead |> Option.map (fun c -> (c.Open + c.Close) / 2m)
-    //     // Seq.
+    let toHA (current, previous) =
+        (current, previous)
+        |>  Seq.unfold (fun k ->
+            Some(k , 
+                let newOpen = ((fst k).Open + (fst k).Close) / 2M
+                previous, {
+                    current with
+                        Open = newOpen
+                        High = [ (snd k).Original.High; newOpen; (snd k).Close ] |> List.max
+                        Low =  [ (snd k).Original.Low;  newOpen; (snd k).Close ] |> List.min
+                }))
+            
 
     candles
     |> Seq.map toHA1
     |> Seq.pairwise
-    |> Seq.map toHA2
+    |> Seq.map toHA
+    |> Seq.head
+    |> Seq.map (fun (_, c) -> c)
+
