@@ -40,40 +40,50 @@ candlestick open or the current Heikin-Ashi candlestick close.
 <b>HA-Low = Minimum of the Low(0), HA-Open(0) or HA-Close(0) </b>
 *)
 let heikenAshi (candles: KLine seq)  =
-    let toHA1 (current: KLine) =
-        let r = {
+    let toFirstHA (current: KLine) =
+        let closePrice = (current.Open + current.Close + current.High + current.Low) / 4M
+        let openPrice = (current.Open + current.Close) / 2M
+        let ha = {
             HeikenAshi.OpenTime = current.OpenTime
             IntervalMinutes = current.IntervalMinutes
-            Close = (current.Open + current.Close + current.High + current.Low) / 4M // Calc from Candles
-            Open = (current.Open + current.Close) / 2M
-            High = current.High
-            Low = current.Low
+            Close = closePrice
+            Open = openPrice
+            High = [current.High; openPrice; closePrice] |> List.max
+            Low = [current.Low; openPrice; closePrice] |> List.min
             Volume = current.Volume
             Symbol = current.Symbol
 
             Original = current
         }
-        printfn "Current Open - %f Open - %f, Current Close - %f, Close - %f" current.Open r.Open current.Close r.Close
-        r
+        // printfn "Current Open - %f Open - %f, Current Close - %f, Close - %f" current.Open r.Open current.Close r.Close
+        ha
         
+    let generateHA ((previous, klines, index): HeikenAshi * KLine array * int) =
+        if index >= Array.length klines
+        then None
+        else
+            let currentKLine = klines.[index]
+            let closePrice = (currentKLine.Open + currentKLine.Close + currentKLine.High + currentKLine.Low) / 4M
+            let openPrice = (previous.Open + previous.Close) / 2M
+            let newHA = {
+                HeikenAshi.OpenTime = currentKLine.OpenTime
+                IntervalMinutes = currentKLine.IntervalMinutes
+                Close = closePrice
+                Open = openPrice
+                High = [currentKLine.High; openPrice; closePrice] |> List.max
+                Low = [currentKLine.Low; openPrice; closePrice] |> List.min
+                Volume = currentKLine.Volume
+                Symbol = currentKLine.Symbol
 
-    let toHA (current, previous) =
-        (current, previous)
-        |>  Seq.unfold (fun k ->
-            Some(k , 
-                let newOpen = ((fst k).Open + (fst k).Close) / 2M
-                previous, {
-                    current with
-                        Open = newOpen
-                        High = [ (snd k).Original.High; newOpen; (snd k).Close ] |> List.max
-                        Low =  [ (snd k).Original.Low;  newOpen; (snd k).Close ] |> List.min
-                }))
-            
+                Original = currentKLine
+            }
+            let newState = (newHA, klines, index + 1)
+            Some (newHA, newState)
 
-    candles
-    |> Seq.map toHA1
-    |> Seq.pairwise
-    |> Seq.map toHA
-    |> Seq.head
-    |> Seq.map (fun (_, c) -> c)
-
+    if Seq.length candles > 0
+    then
+        let candlesArray = candles |> Seq.toArray
+        let firstHA = toFirstHA <| Seq.head candles
+        let initialState = (firstHA, candlesArray, 0)
+        Seq.unfold generateHA initialState
+    else Seq.empty
