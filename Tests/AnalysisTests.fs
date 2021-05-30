@@ -46,7 +46,7 @@ let ``Heiken Ashi is calculated correctly`` () =
         1.5m; 2.5m; 3.5m;
     ]
     let expectedHAOpen = [
-        1.5m; 1.5m; 2.5m;
+        1.5m; 1.5m; 2.0m;
     ]
     let expectedHAHigh = [
         3m; 4m; 5m;
