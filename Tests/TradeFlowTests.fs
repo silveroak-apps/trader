@@ -33,6 +33,8 @@ module TradeFlowTests =
                 member __.QueryOrder _ = raise (exn "QueryOrder mock not setup")
                 member __.CancelOrder _ = raise (exn "CancelOrder mock not setup")
                 member __.GetOrderBookCurrentPrice _ = raise (exn "GetOrderBookCurrentPrice mock not setup")
+                member __.Id = Types.ExchangeId 0L
+                member __.Name = "TradeFlowTestExchange"
             }
         let signalCmd = {
             FuturesSignalCommandView.SignalId = 1L
@@ -49,5 +51,5 @@ module TradeFlowTests =
             Strategy = "does not matter"
             Status = "does not matter"
         }
-        let result = Futures.placeOrderWithRetryOnError mockExchange signalCmd |> Async.RunSynchronously
+        let result = Futures.placeOrderWithRetryOnError mockExchange signalCmd 0M |> Async.RunSynchronously
         result |> should be (ofCase <@ Error @>)

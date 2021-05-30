@@ -9,58 +9,9 @@ open Types
 open Binance.Net.Interfaces.SubClients.Futures
 open Serilog
 
+open Binance.Futures.Common
+
 let ExchangeId = 4L
-
-// ugly: TODO get config from outside?
-let private cfg = appConfig.GetSection "Binance"
-
-let getApiKeyCfg () = 
-    {
-        BinanceApiKey.Key = cfg.Item "FuturesKey"
-        Secret = cfg.Item "FuturesSecret"
-    }
-
-let getBaseClient () =
-    let apiKey = getApiKeyCfg ()
-    let options = 
-        // this is options for everything - though it has 'Spot' in its name
-        let opts = 
-            new Objects.Spot.BinanceClientOptions(
-                TradeRulesBehaviour = Enums.TradeRulesBehaviour.AutoComply,
-                ApiCredentials = new CryptoExchange.Net.Authentication.ApiCredentials(apiKey.Key, apiKey.Secret)
-            )
-        // a little ugly - but will do for now
-        let futuresCoinMBaseUrl = cfg.Item "FuturesCoinMBaseUrl" // Can be used to configure 'testnet'. Leave empty for default / prod
-        let futuresUsdtBaseUrl = cfg.Item "FuturesUsdtBaseUrl" // Can be used to configure 'testnet'. Leave empty for default / prod
-        if not <| String.IsNullOrWhiteSpace futuresCoinMBaseUrl
-        then opts.BaseAddressCoinFutures <- futuresCoinMBaseUrl
-            
-        if not <| String.IsNullOrWhiteSpace futuresUsdtBaseUrl
-        then opts.BaseAddressUsdtFutures <- futuresUsdtBaseUrl
-
-        opts
-
-    let binanceOptions = new BinanceClient(options)
-    Log.Verbose("Using Binance URLs: coin-m = {FuturesCoinMBaseUrl}, usdt = {FuturesUsdtBaseUrl}", 
-        options.BaseAddressCoinFutures, options.BaseAddressUsdtFutures)
-
-    binanceOptions
-
-let getSocketClient () =
-    let apiKey = getApiKeyCfg ()
-    let options = 
-        Objects.Spot.BinanceSocketClientOptions ( // though this says 'Spot', it is really futures
-                ApiCredentials = new CryptoExchange.Net.Authentication.ApiCredentials(apiKey.Key, apiKey.Secret),
-                AutoReconnect = true
-            )
-    let futuresWssUrl = cfg.Item "FuturesWSSUrl"
-    if not <| String.IsNullOrWhiteSpace futuresWssUrl
-    then
-        options.BaseAddressCoinFutures <- futuresWssUrl
-        options.BaseAddressUsdtFutures <- futuresWssUrl
-
-    let socketClient = new BinanceSocketClient (options)
-    socketClient
 
 type FuturesMode = USDT | COINM
 
@@ -243,7 +194,7 @@ let private getOrderBookCurrentPrice (Symbol s) =
                                         AskQty   = o.BestAskQuantity
                                         BidPrice = o.BestBidPrice
                                         BidQty   = o.BestBidQuantity
-                                        Symbol   = s
+                                        Symbol   = Symbol s
                                     })
                     |> (fun ob ->
                             match ob with
@@ -266,7 +217,7 @@ let private getOrderBookCurrentPrice (Symbol s) =
                                         AskQty   = o.BestAskQuantity
                                         BidPrice = o.BestBidPrice
                                         BidQty   = o.BestBidQuantity
-                                        Symbol   = s
+                                        Symbol   = Symbol s
                                     })
                     |> (fun ob ->
                             match ob with
@@ -276,9 +227,18 @@ let private getOrderBookCurrentPrice (Symbol s) =
     }
 
 let getExchange() = {
-        new IExchange with
+        new IFuturesExchange with
         member __.PlaceOrder o = placeOrder o
         member __.QueryOrder o = queryOrderStatus o
         member __.CancelOrder o = cancelOrder o
         member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice (Symbol s)
+        member __.Id = Types.ExchangeId ExchangeId
+        member __.Name = "BinanceFutures"
+
+        member __.GetFuturesPositions _symbolFilter = async { return (Error "NOT IMPLEMENTED YET") }
+        member __.TrackPositions (agent, symbols) = async { 
+                let started = PositionListener.trackPositions agent symbols
+                Log.Information ("started Binance position tracker : {Success}", started)
+                return () 
+            }
     }

@@ -59,6 +59,7 @@
     <EmbeddedResource Include="Scripts\Script 0039 - Create Symbols Tables.sql" />
     <EmbeddedResource Include="Scripts\Script 0040 - ConfigTable.sql" />
     <EmbeddedResource Include="Scripts\Script 0041 - Alter Market Event.sql"/>
+    <EmbeddedResource Include="Scripts\Script 0042 - Alter SignalCommand ExchangeOrder relation.sql"/>
     <EmbeddedResource Include="Scripts\Script 0043 - Alter Market Event With Exchange.sql"/>
     <Content Include="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

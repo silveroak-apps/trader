@@ -6,14 +6,26 @@
 
   <ItemGroup>
     <Compile Include="Types.fs" />
+    <Compile Include="AnalysisTypes.fs" />
     <Compile Include="Exchanges\Binance\ApiTypes.fs" />
     <Compile Include="Exchanges\Binance\Spot\Trade.fs" />
+    <Compile Include="Exchanges\Binance\Futures\Common.fs" />
+    <Compile Include="Exchanges\Binance\Futures\PositionListener.fs" />
     <Compile Include="Exchanges\Binance\Futures\Trade.fs" />
+    <Compile Include="Exchanges\Binance\Futures\Market.fs" />
+    <Compile Include="Exchanges\Bybit\Futures\Common.fs" />
+    <Compile Include="Exchanges\Bybit\Futures\PositionListener.fs" />
+    <Compile Include="Exchanges\Bybit\Futures\Trade.fs" />
+    <Compile Include="Exchanges\Bybit\Futures\Market.fs" />
     <Compile Include="Exchanges\Simulator\Exchange.fs" />
+    <Compile Include="Exchanges.fs" />
+    <Compile Include="Strategies\Analysis.fs" />
+    <Compile Include="Strategies\Common.fs" />
+    <Compile Include="Strategies\FuturesKLineAnalyser.fs" />
+    <Compile Include="Strategies\FuturesPositionAnalyser.fs" />
     <Compile Include="FuturesTrade.fs" />
     <Compile Include="SpotTrade.fs" />
     <Compile Include="Db.fs" />
-    <Compile Include="Positions.fs" />
     <Compile Include="WebApi.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
@@ -21,6 +33,7 @@
   <ItemGroup>
     <PackageReference Include="Argu" Version="6.1.1" />
     <PackageReference Include="Binance.Net" Version="6.12.0" />
+    <PackageReference Include="bybit-api-client" Version="1.0.0" />
     <PackageReference Include="Dapper" Version="2.0.78" />
     <PackageReference Include="DigitalRuby.ExchangeSharp" Version="0.7.4" />
     <PackageReference Include="FSharpx.Async" Version="1.14.1" />

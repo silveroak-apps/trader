@@ -53,9 +53,14 @@ let main (argv: string[]) =
         // Log.Information ("Starting spot trader...")
         // run Trade.Spot.processValidSignals placeRealOrders |> Async.Start
 
-        if Positions.trackPositions ()
-        then Log.Information ("Started Binance Futures position tracker")
-        else Log.Warning ("Could not start Binance Futures position tracker")
+        // start analysers
+        Strategies.FuturesPositionAnalyser.trackPositions
+            Trader.Exchanges.knownExchanges.Values
+            Trader.Exchanges.allSymbols
+        |> Async.Start
+
+        // Strategies.FuturesKLineAnalyser.startAnalysis ()
+        // |> Async.Start
 
         WebApi.run placeRealOrders // this will block
 

@@ -4,23 +4,14 @@ open System
 open System.Collections.Generic
 open Serilog
 open Serilog.Context
-open Binance.Futures
+
 open FSharpx.Control
 open FSharp.Control
 open FsToolkit.ErrorHandling
 
 open DbTypes
 open Types
-
-let private knownExchanges = dict [
-    ( Trade.ExchangeId, Trade.getExchange() )
-    ( Simulator.ExchangeId, Simulator.Exchange.get(Trade.getExchange()) )
-]
-
-let getExchange (exchangeId: int64) = 
-    match knownExchanges.TryGetValue exchangeId with
-    | true, exchange -> Result.Ok exchange
-    | _              -> Result.Error (sprintf "Could not find exchange for exchangeId: %d" exchangeId)
+open Trader.Exchanges
 
 let private updateOrderWith (o: OrderInfo) (statusReason: string) (exo: ExchangeOrder) = 
         let (OrderId oid) = o.OrderId
@@ -34,48 +25,41 @@ let private updateOrderWith (o: OrderInfo) (statusReason: string) (exo: Exchange
             ExecutedPrice = o.Price / 1M<price>
         }
 
-let private findOrderSide positionType signalAction = 
-    match positionType, signalAction with
-    | "LONG", "OPEN"      -> BUY  |> Ok
-    | "LONG", "INCREASE"  -> BUY  |> Ok
-    | "LONG", "DECREASE"  -> SELL |> Ok
-    | "LONG", "CLOSE"     -> SELL |> Ok
+let private findOrderSide (positionSide: PositionSide) (signalAction: SignalAction) = 
+    match positionSide, signalAction with
+    | LONG, OPEN      -> BUY  |> Ok
+    | LONG, INCREASE  -> BUY  |> Ok
+    | LONG, DECREASE  -> SELL |> Ok
+    | LONG, CLOSE     -> SELL |> Ok
 
-    | "SHORT", "OPEN"     -> SELL |> Ok
-    | "SHORT", "INCREASE" -> SELL |> Ok
-    | "SHORT", "DECREASE" -> BUY  |> Ok
-    | "SHORT", "CLOSE"    -> BUY  |> Ok
+    | SHORT, OPEN     -> SELL |> Ok
+    | SHORT, INCREASE -> SELL |> Ok
+    | SHORT, DECREASE -> BUY  |> Ok
+    | SHORT, CLOSE    -> BUY  |> Ok
 
-    | _, _                -> Result.Error <| exn (sprintf "Unsupported positionType: %s, signalAction: %s" positionType signalAction)
-
-let evaluateSignalStatusUpdate signalAction (exchangeOrder: ExchangeOrder) =
-    let hasFilledAny = exchangeOrder.ExecutedQty > 0M
-    match signalAction, hasFilledAny with
-    | "OPEN",  true -> "OPEN"
-    | "CLOSE", true -> "CLOSED"
-    | _, _          -> "" // no change
+    | _, _            -> Result.Error <| exn (sprintf "Unsupported positionType: %A, signalAction: %A" positionSide signalAction)
 
 let determineOrderPrice (exchange: IExchange) (s: FuturesSignalCommandView) (orderSide: OrderSide) = 
     asyncResult {
         let! orderBook = exchange.GetOrderBookCurrentPrice s.Symbol
         // reduce potential loss due to spread
-        // chanding back to aggressive buy / sell
+        let positionSide = PositionSide.FromString s.PositionType
         let result =
-            match orderSide, s.PositionType with
-            | BUY,  "LONG"  -> 
-                let diff = orderBook.BidPrice - s.Price
+            match orderSide, positionSide with
+            | BUY,  LONG  -> 
+                // let diff = orderBook.BidPrice - s.Price
                 orderBook.BidPrice
-            | BUY,  "SHORT" -> orderBook.BidPrice
-            | SELL, "LONG"  -> orderBook.AskPrice
-            | SELL, "SHORT" -> orderBook.AskPrice
-            | _             -> raise (exn <| sprintf "Unexpected position type value: '%s' trying to determine order price" s.PositionType)
+            | BUY,  SHORT -> orderBook.BidPrice
+            | SELL, LONG  -> orderBook.AskPrice
+            | SELL, SHORT -> orderBook.AskPrice
+            | _           -> raise (exn <| sprintf "Unexpected position type value: '%s' trying to determine order price" s.PositionType)
         return result
     } 
     |> AsyncResult.mapError exn
     |> AsyncResult.catch id
 
 let toExchangeOrder (signalCommand: FuturesSignalCommandView) = 
-    let orderSide = findOrderSide signalCommand.PositionType signalCommand.Action
+    let orderSide = findOrderSide (PositionSide.FromString signalCommand.PositionType) (SignalAction.FromString signalCommand.Action)
     Result.map (fun os ->
             {
                 ExchangeOrder.CreatedTime = DateTime.UtcNow
@@ -101,14 +85,13 @@ let toExchangeOrder (signalCommand: FuturesSignalCommandView) =
 
 let calcSlippage orderBookPrice desiredPrice =
     ( orderBookPrice - desiredPrice ) * 100M / desiredPrice
-   
 
 let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) maxSlippage =
     asyncResult {
         Log.Information ("Placing an order for command {Command} for signal {SignalId} using exchange {Exchange}", s, s.SignalId, exchange.GetType().Name)
 
         let sym = s.Symbol |> Symbol
-        let! orderSide = findOrderSide s.PositionType s.Action
+        let! orderSide = findOrderSide (PositionSide.FromString s.PositionType) (SignalAction.FromString s.Action)
 
         let assetQty = Math.Abs(s.Quantity) * 1M<qty> // need to take abs value to ensure the right amount is used for longs/shorts
         let! orderPrice = determineOrderPrice exchange s orderSide
@@ -403,7 +386,7 @@ let private mkTradeAgent
 
                         let! result =
                             asyncResult {
-                                let! exchange = (getExchange exchangeId |> Result.mapError exn)
+                                let! exchange = (lookupExchange (ExchangeId exchangeId) |> Result.mapError exn)
                                 let! orders = executeOrdersForCommand exchange saveOrder getPositionSize maxSlippage [] cancellationDelay maxAttempts attemptCount s
                                 let executedQty = getFilledQty orders
                                 let signalCommandStatus =

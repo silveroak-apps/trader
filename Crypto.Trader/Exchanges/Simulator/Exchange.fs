@@ -59,4 +59,6 @@ module Exchange =
                     return Ok true
                 }
             member __.GetOrderBookCurrentPrice s = innerExchange.GetOrderBookCurrentPrice s
+            member __.Id = Types.ExchangeId -1L
+            member __.Name = sprintf "%s-Simulator" innerExchange.Name
         }

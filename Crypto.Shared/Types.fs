@@ -30,3 +30,12 @@ with
         | "buy" -> BUY
         | "sell" -> SELL
         | _ -> UNKNOWN
+
+type PositionSide = LONG | SHORT | NOT_APPLICABLE
+with
+    static member FromString (s: string) = 
+        match s.ToLower() with
+        | "long" -> LONG
+        | "short" -> SHORT
+        | _ -> NOT_APPLICABLE
+
