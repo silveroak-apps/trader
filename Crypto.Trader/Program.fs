@@ -54,10 +54,10 @@ let main (argv: string[]) =
         // run Trade.Spot.processValidSignals placeRealOrders |> Async.Start
 
         // start analysers
-        Strategies.FuturesPositionAnalyser.trackPositions
-            Trader.Exchanges.knownExchanges.Values
-            Trader.Exchanges.allSymbols
-        |> Async.Start
+        // Strategies.FuturesPositionAnalyser.trackPositions
+        //     Trader.Exchanges.knownExchanges.Values
+        //     Trader.Exchanges.allSymbols
+        // |> Async.Start
 
         // Strategies.FuturesKLineAnalyser.startAnalysis ()
         // |> Async.Start
