@@ -87,13 +87,13 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
             let (Symbol symbol) = candle.Symbol
             let! exchange = Trader.Exchanges.lookupExchange exchangeId
             let marketEvent = {
-                MarketEvent.Name = "futures_kline_war_1m"
+                MarketEvent.Name = sprintf "%s_futures_kline_war_1m_%s" (string a) (string symbol)
                 Price = candle.Original.Close
                 Symbol = symbol.ToUpperInvariant()
                 Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
                 TimeFrame = "1" // hardcode for now
                 Exchange = exchange.Name
-                Category = "futures_kline_war"
+                Category = sprintf "futures_kline_war_%s" (string symbol)
                 Contracts = 0M // no contracts for now: TODO pull from config or somewhere else?
             }
             let! _ = raiseMarketEvent marketEvent
