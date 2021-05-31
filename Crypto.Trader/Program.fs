@@ -59,8 +59,8 @@ let main (argv: string[]) =
             Trader.Exchanges.allSymbols
         |> Async.Start
 
-        // Strategies.FuturesKLineAnalyser.startAnalysis ()
-        // |> Async.Start
+        Strategies.FuturesKLineAnalyser.startAnalysis ()
+        |> Async.Start
 
         WebApi.run placeRealOrders // this will block
 
