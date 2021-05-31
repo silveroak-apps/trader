@@ -14,7 +14,15 @@ type private CandleKey = {
     Symbol: Symbol
 }
 
+type private EventKey = {
+    ExchangeId: ExchangeId
+    Symbol: Symbol
+    SignalAction: SignalAction
+    PositionSide: PositionSide
+}
+
 let private candlesFetchTimes = new ConcurrentDictionary<CandleKey, DateTimeOffset>()
+let private raisedEvents = new ConcurrentDictionary<EventKey, DateTimeOffset>()
 
 let private getCandles (exchangeId: ExchangeId) (symbol: Symbol) =
     
@@ -42,14 +50,37 @@ let private logKLineError (e: KLineError) =
     | UnsupportedKlineTypeError s -> sprintf "UnsupportedKLineTypeError: %s" s
     |> Log.Error
 
+let private cleanupOldEventsInMemory () =
+    let itemsToRemove =
+        raisedEvents
+        |> Seq.filter (fun kv -> DateTimeOffset.UtcNow - kv.Value > TimeSpan.FromHours 1.0)
+        |> Seq.toList
+    itemsToRemove
+    |> Seq.iter (fun kv -> raisedEvents.TryRemove kv |> ignore)
+
 let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSide) (candle: Analysis.HeikenAshi) =    
     asyncResult {
         let timeDiff = DateTimeOffset.UtcNow - candle.OpenTime.ToUniversalTime()
+        let eventKey = {
+                EventKey.ExchangeId = exchangeId
+                SignalAction = a
+                Symbol = candle.Symbol
+                PositionSide = p
+            }
+        let candleCloseTime = candle.OpenTime.AddMinutes <| float candle.IntervalMinutes
+        let raisedSameEventRecently = 
+            raisedEvents.ContainsKey(eventKey) && 
+            (raisedEvents.[eventKey] - candleCloseTime) < TimeSpan.FromMinutes(float candle.IntervalMinutes * 2.0)
+
         if timeDiff > TimeSpan.FromSeconds 5.0
         then
-            return! Result.Error 
-                (sprintf "Error raising event: Candle data is out of date for exchange %A, symbol: %A. Diff: %A" 
-                    exchangeId candle.Symbol timeDiff)
+            Log.Debug ("Error raising event: Candle data is out of date for exchange {Exchange}, symbol: {Symbol}. Diff: {TimeDiff}",
+                    exchangeId, 
+                    candle.Symbol,
+                    timeDiff)
+        elif raisedSameEventRecently
+        then
+            Log.Debug ("Not raising event: raised an event recently.")
         else
             Log.Information ("About to raise a market event for {Action} {PositionSide} {Symbol} on {Exchange}",
                 a, p, candle.Symbol)
@@ -66,7 +97,11 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
                 Contracts = 0M // no contracts for now: TODO pull from config or somewhere else?
             }
             let! _ = raiseMarketEvent marketEvent
-            Log.Information("Raised a market event to close the long: {MarketEvent}", marketEvent)
+
+            cleanupOldEventsInMemory ()
+            raisedEvents.[eventKey] <- candleCloseTime
+
+            Log.Information("Raised a market event to close the long: {MarketEvent}. EventKey = {EventKey}", marketEvent, eventKey)
 
     } |> AsyncResult.mapError KLineError.Error
 
@@ -84,7 +119,7 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: seq<Analysis.Hei
             let high        = candleArray |> Array.map (fun c -> c.High)
             let low         = candleArray |> Array.map (fun c -> c.Low)
             let close       = candleArray |> Array.map (fun c -> c.Close)
-            let open_        = candleArray |> Array.map (fun c -> c.Open)
+            let open_       = candleArray |> Array.map (fun c -> c.Open)
 
             // 0 is latest candle, 1 is previous and so on...
             //close > close[1] and close[1] > close[2] and fbCandle and fbCandle[1] 
@@ -93,7 +128,8 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: seq<Analysis.Hei
 
             //open < open[1] and open[1] < open[2] and ftCandle and ftCandle[1] 
             let shouldShort =
-                ftCandle.[0] && ftCandle.[1] && (open_.[0] < open_.[1]) && (open_.[1] < open_.[2])
+                ftCandle.[0] && ftCandle.[1] && (close.[0] < close.[1]) && (close.[1] < close.[2])
+
 
             let latestCandle = candleArray.[0]
 
