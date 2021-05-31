@@ -507,12 +507,17 @@ let placeOrder (order: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
         | Error s -> return (Error <| OrderError s)
     }
 
+
+let ExchangeId = 1L
+
+let fixedFeeRate = 0.1M / 100M // 0.1 %
+
 let getExchange() = {
         new IExchange with
         member __.PlaceOrder o = placeOrder o
         member __.QueryOrder o = queryOrderStatus o
         member __.CancelOrder o = cancelOrder o
         member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice s
-        member __.Id = ExchangeId Binance.ExchangeId
-        member __.Name = "Binance-Spot"
+        member __.Id = Types.ExchangeId ExchangeId
+        member __.Name = "Binance"
     }

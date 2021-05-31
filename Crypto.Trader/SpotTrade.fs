@@ -6,13 +6,12 @@ open FSharp.Control
 open Types
 open Serilog.Context
 open DbTypes
-open Binance.Spot
 
 let maxSignalsForCompounding = 5
 
 let private knownExchanges = dict [
-    ( Binance.ExchangeId, Trade.getExchange() )
-    ( Simulator.ExchangeId, Simulator.Exchange.get(Trade.getExchange()) )
+    ( Binance.Spot.Trade.ExchangeId, Binance.Spot.Trade.getExchange() )
+    ( Simulator.ExchangeId, Simulator.Exchange.get(Binance.Spot.Trade.getExchange()) )
 ]
 
 let private getExchange (exchangeId: int64) = 

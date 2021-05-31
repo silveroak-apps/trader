@@ -12,7 +12,6 @@
     <Compile Include="Db.fs" />
     <Compile Include="Dapper.Infra.fs" />
     <Compile Include="Process.fs" />
-    <Compile Include="Binance.fs" />
   </ItemGroup>
 
   <ItemGroup>

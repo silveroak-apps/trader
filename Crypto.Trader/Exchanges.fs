@@ -25,7 +25,7 @@ type ContractDetails = {
 // If it is 'CONT' or contracts, we can convert to USD
 let usdtSymbols  = 
     dict [ 
-        // ("BNBUSDT", { Multiplier = 1 })
+        ("BNBUSDT", { Multiplier = 1 })
         // ("BTCUSDT", { Multiplier = 1 })
         // ("ETHUSDT", { Multiplier = 1 })
         // ("ADAUSDT", { Multiplier = 1 })
@@ -37,8 +37,8 @@ let usdtSymbols  =
 
 let coinMSymbols =
     dict [ 
-        // ("BNBUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
-        ("BTCUSD_PERP", { Multiplier = 100 }) // 1 cont = 100 USD
+        ("BNBUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
+        // ("BTCUSD_PERP", { Multiplier = 100 }) // 1 cont = 100 USD
         //("BTCUSD", { Multiplier = 100 }) // 1 cont = 100 USD
         // ("ETHUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
         // ("ADAUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD

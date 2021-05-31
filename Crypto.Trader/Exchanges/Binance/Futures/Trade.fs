@@ -11,8 +11,6 @@ open Serilog
 
 open Binance.Futures.Common
 
-let ExchangeId = 4L
-
 type FuturesMode = USDT | COINM
 
 let private getClient futuresMode =

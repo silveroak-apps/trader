@@ -56,3 +56,5 @@ let getSocketClient () =
 
     let socketClient = new BinanceSocketClient (options)
     socketClient
+
+let ExchangeId = 4L

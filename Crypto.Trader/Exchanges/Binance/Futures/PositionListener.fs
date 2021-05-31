@@ -122,7 +122,7 @@ let private subscribeToUserStream (tradeAgent: MailboxProcessor<PositionCommand>
                                         IsolatedMargin = p.IsolatedWallet
                                         LiquidationPrice = 0M // not available here
                                     })
-                                tradeAgent.Post (FuturesPositionUpdate (ExchangeId Binance.ExchangeId, positions))
+                                tradeAgent.Post (FuturesPositionUpdate (Types.ExchangeId Binance.Futures.Common.ExchangeId, positions))
                              ),
            onMarginUpdate = null,
            onListenKeyExpired = null
@@ -141,7 +141,7 @@ let private listenToFuturesPriceTickerForSymbol (tradeAgent: MailboxProcessor<Po
                     AskQty = msg.BestAskQuantity
                     BidQty = msg.BestBidQuantity
                 }
-                tradeAgent.Post (FuturesBookPrice (ExchangeId Binance.ExchangeId, orderBookTickerInfo)))
+                tradeAgent.Post (FuturesBookPrice (Types.ExchangeId Binance.Futures.Common.ExchangeId, orderBookTickerInfo)))
         )
     Log.Information("Subscribing to futures price ticker for {Symbol}. Success: {Result}. Error: {Error}", symbol, subscription.Success, subscription.Error)
     subscription.Success
