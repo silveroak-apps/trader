@@ -10,7 +10,7 @@ let getExchange1() = {
     new IFuturesExchange with
     member __.CancelOrder(o: OrderQueryInfo): Async<Result<bool,string>> = 
         failwith "Not Implemented"
-    member __.GetFuturesPositions(o: string): Async<Result<seq<ExchangePosition>,string>> = 
+    member __.GetFuturesPositions(o: string option): Async<Result<seq<ExchangePosition>,string>> = 
         failwith "Not Implemented"
     member __.GetOrderBookCurrentPrice(o: string): Async<Result<OrderBookTickerInfo,string>> = 
         failwith "Not Implemented"
