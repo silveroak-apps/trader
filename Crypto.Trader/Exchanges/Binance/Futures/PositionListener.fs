@@ -12,7 +12,7 @@ open FsToolkit.ErrorHandling
 open Types
 open Binance.Futures.Common
 
-let private getUsdtPositionsFromBinanceAPI (client: IBinanceClientFuturesUsdt) (symbol: string option) =
+let getUsdtPositionsFromBinanceAPI (client: IBinanceClientFuturesUsdt) (symbol: string option) =
     async {
         let! positionResult =
             match symbol with
@@ -46,7 +46,7 @@ let private getUsdtPositionsFromBinanceAPI (client: IBinanceClientFuturesUsdt) (
         return positions
     }
 
-let private getCoinPositionsFromBinanceAPI (client: IBinanceClientFuturesCoin) (symbol: string option) =
+let getCoinPositionsFromBinanceAPI (client: IBinanceClientFuturesCoin) (symbol: string option) =
     async {
         let! positionResult =
             match symbol with

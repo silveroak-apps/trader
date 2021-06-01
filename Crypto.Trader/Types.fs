@@ -179,6 +179,6 @@ type IExchange =
 
 type IFuturesExchange =
     inherit IExchange
-    abstract member GetFuturesPositions: string -> Async<Result<ExchangePosition seq, string>>
+    abstract member GetFuturesPositions: string option -> Async<Result<ExchangePosition seq, string>>
     abstract member TrackPositions: MailboxProcessor<PositionCommand> * string seq -> Async<unit>
 

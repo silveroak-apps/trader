@@ -97,10 +97,7 @@ let private printPositionSummary () =
 
 let private getPositionsFromExchange (exchange: IFuturesExchange) (symbol: string option) =
     async {
-        let! positionsResult =
-            match symbol with
-            | Some s -> exchange.GetFuturesPositions(s.Replace("_PERP", "")) // TODO move to Binance specific impl
-            | None   -> exchange.GetFuturesPositions("")
+        let! positionsResult = exchange.GetFuturesPositions(symbol)
 
         let positions =
             match positionsResult with

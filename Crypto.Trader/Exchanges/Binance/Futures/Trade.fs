@@ -223,6 +223,25 @@ let private getOrderBookCurrentPrice (Symbol s) =
                             | None -> Result.Error "No orderbook data found"
                         ) 
     }
+ 
+let private getPositions (symbolFilter: string option) =
+    async {
+        let client = getBaseClient()
+        let! result =
+            match symbolFilter with
+            | Some s ->
+                if s.EndsWith "USDT"
+                then PositionListener.getUsdtPositionsFromBinanceAPI client.FuturesUsdt symbolFilter
+                else PositionListener.getCoinPositionsFromBinanceAPI client.FuturesCoin symbolFilter
+            | None ->
+                async {
+                    let! usdtPositions = PositionListener.getUsdtPositionsFromBinanceAPI client.FuturesUsdt None
+                    let! coinmPositions = PositionListener.getCoinPositionsFromBinanceAPI client.FuturesCoin None
+                    return (usdtPositions |> Seq.append coinmPositions)
+                }
+
+        return Ok (result)
+    }
 
 let getExchange() = {
         new IFuturesExchange with
@@ -233,7 +252,7 @@ let getExchange() = {
         member __.Id = Types.ExchangeId ExchangeId
         member __.Name = "BinanceFutures"
 
-        member __.GetFuturesPositions _symbolFilter = async { return (Error "NOT IMPLEMENTED YET") }
+        member __.GetFuturesPositions symbolFilter = getPositions symbolFilter
         member __.TrackPositions (agent, symbols) = async { 
                 let started = PositionListener.trackPositions agent symbols
                 Log.Information ("started Binance position tracker : {Success}", started)
