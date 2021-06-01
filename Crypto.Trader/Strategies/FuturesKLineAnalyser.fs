@@ -60,7 +60,7 @@ let private cleanupOldEventsInMemory () =
 
 let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSide) (candle: Analysis.HeikenAshi) =    
     asyncResult {
-        let timeDiff = DateTimeOffset.UtcNow - candle.OpenTime.ToUniversalTime()
+        let candleDataAge = DateTimeOffset.UtcNow - candle.OpenTime.ToUniversalTime()
         let eventKey = {
                 EventKey.ExchangeId = exchangeId
                 SignalAction = a
@@ -72,18 +72,19 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
             raisedEvents.ContainsKey(eventKey) && 
             (raisedEvents.[eventKey] - candleCloseTime) < TimeSpan.FromMinutes(float candle.IntervalMinutes * 2.0)
 
-        if timeDiff > TimeSpan.FromSeconds 5.0
+        let candleDataTooOld = candleDataAge > TimeSpan.FromMinutes (float candle.IntervalMinutes * 1.2)
+        if candleDataTooOld
         then
             Log.Debug ("Error raising event: Candle data is out of date for exchange {Exchange}, symbol: {Symbol}. Diff: {TimeDiff}",
                     exchangeId, 
                     candle.Symbol,
-                    timeDiff)
+                    candleDataAge)
         elif raisedSameEventRecently
         then
             Log.Debug ("Not raising event: raised an event recently.")
         else
-            Log.Information ("About to raise a market event for {Action} {PositionSide} {Symbol} on {Exchange}",
-                a, p, candle.Symbol)
+            Log.Information ("About to raise a market event for {Action} {PositionSide} {Symbol} on {Exchange}, candle age: {CandleDataAge}: ",
+                a, p, candle.Symbol, candleDataAge)
             let (Symbol symbol) = candle.Symbol
             let! exchange = Trader.Exchanges.lookupExchange exchangeId
             let action = 
