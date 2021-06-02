@@ -6,14 +6,15 @@ open Binance.Futures.Common
 open System
 
 let private fromBinanceKLine (s:Symbol) (k: Binance.Net.Interfaces.IBinanceKline): KLine =
-   {
+    let intervalMinutes = Math.Round((k.CloseTime - k.OpenTime).TotalMinutes) |> int
+    {
         KLine.OpenTime = DateTimeOffset (k.OpenTime)
         Open = k.Open
         Close = k.Close
         Low = k.Low
         High = k.High
         Volume = k.QuoteVolume
-        IntervalMinutes = (((k.CloseTime - k.OpenTime).TotalSeconds + float 1) / float 60) |> int
+        IntervalMinutes = intervalMinutes
         Symbol = s
     }
 

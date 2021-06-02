@@ -68,9 +68,11 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
                 PositionSide = p
             }
         let candleCloseTime = candle.OpenTime.AddMinutes <| float candle.IntervalMinutes
+
+        let recentEventToleranceMinutes = 2.0 
         let raisedSameEventRecently = 
             raisedEvents.ContainsKey(eventKey) && 
-            (raisedEvents.[eventKey] - candleCloseTime) < TimeSpan.FromMinutes(float candle.IntervalMinutes * 2.0)
+            (candleCloseTime - raisedEvents.[eventKey]) < TimeSpan.FromMinutes(float candle.IntervalMinutes * recentEventToleranceMinutes)
 
         let candleDataTooOld = candleDataAge > TimeSpan.FromMinutes (float candle.IntervalMinutes * 1.2)
         if candleDataTooOld
@@ -81,7 +83,10 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
                     candleDataAge)
         elif raisedSameEventRecently
         then
-            Log.Debug ("Not raising event: raised an event recently.")
+            Log.Debug ("Not raising event: raised an event recently at {LastTimeWeRaised} ({X} mins ago), we don't raise another one within {Y} mins.",
+                raisedEvents.[eventKey],
+                (candleCloseTime - raisedEvents.[eventKey]).TotalMinutes,
+                recentEventToleranceMinutes)
         else
             Log.Information ("About to raise a market event for {Action} {PositionSide} {Symbol} on {Exchange}, candle age: {CandleDataAge}: ",
                 a, p, candle.Symbol, candleDataAge)
