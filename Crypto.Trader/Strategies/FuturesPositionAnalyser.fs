@@ -384,8 +384,6 @@ let trackPositions (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
     // something where the exception is unrecoverable
     tradeAgent.Error.Add(raise)
 
-    tradeAgent.Post RefreshPositions
-
     repeatEvery (TimeSpan.FromSeconds(3.0)) printPositionSummary "PositionSummaryPrinter" |> Async.Start
     repeatEvery (TimeSpan.FromSeconds(15.0)) (fun () -> refreshPositions exchanges) "PositionRefresh" |> Async.Start
 

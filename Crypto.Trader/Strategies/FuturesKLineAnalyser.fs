@@ -112,11 +112,9 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
 
     } |> AsyncResult.mapError KLineError.Error
 
-let private analyseCandles (exchangeId: ExchangeId) (haCandles: seq<Analysis.HeikenAshi>) =
+let private analyseCandles (exchangeId: ExchangeId) (haCandles: Analysis.HeikenAshi seq) =
     asyncResult {
-
-        let candleArray = Seq.toArray haCandles |> Array.sortByDescending (fun c -> c.OpenTime)
-        
+        let candleArray = haCandles |> Seq.toArray
         if Array.length candleArray > 2
         then
             let fbCandle    = candleArray |> Array.map (fun c -> c.Low   = c.Open) 
@@ -155,7 +153,7 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: seq<Analysis.Hei
                 then raiseEvent exchangeId OPEN SHORT latestCandle
                 else AsyncResult.ofResult(Ok ())
         else
-            Log.Warning ("Fewer than 3 candles so far, ignoring...")
+            Log.Warning ("Fewer than 3 candles so far from {ExchangeId}, ignoring...", exchangeId)
 
     } |> Async.map (Result.teeError logKLineError)
 
@@ -178,12 +176,15 @@ let private teeUpdateFetchTime (exchangeId: ExchangeId) (symbol: Symbol) (candle
         let value = candlesFetchTimes.[candleKey]
         candlesFetchTimes.TryRemove(candleKey, ref value) |> ignore
     else
-        candlesFetchTimes.[candleKey] <- (candles |> Seq.head |> (fun c -> c.OpenTime))
+        let fetchTime = candles |> Seq.head |> (fun c -> c.OpenTime)
+        Log.Debug ("Storing fetch time for key {CandleKey}: {Time}", candleKey, fetchTime)
+        candlesFetchTimes.[candleKey] <- fetchTime
 
     candles 
 
 let private analyseHACandles (exchangeId: ExchangeId) (symbol: Symbol) =
     getCandles exchangeId symbol
+    |> AsyncResult.map (fun cs -> cs |> Seq.sortByDescending (fun c -> c.OpenTime))
     |> AsyncResult.map (teeUpdateFetchTime exchangeId symbol)
     |> AsyncResult.map Analysis.heikenAshi
     |> AsyncResult.bind (analyseCandles exchangeId)
@@ -199,11 +200,10 @@ let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> 
         with e -> Log.Warning (e, "Error running function {TimerFunctionName} on timer. Continuing next time...", nameForLogging)
 
         let interval = intervalFn()
-        Log.Verbose ("Waiting for {Interval} before another KLine fetch", interval)
+        Log.Debug ("Waiting for {Interval} before another KLine fetch", interval)
         do! Async.Sleep (int interval.TotalMilliseconds)
         do! repeatEveryInterval intervalFn fn nameForLogging 
     }
-    
 
 let startAnalysis (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
     Seq.allPairs exchanges symbols
