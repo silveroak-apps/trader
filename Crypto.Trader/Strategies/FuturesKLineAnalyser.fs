@@ -132,9 +132,9 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: Analysis.HeikenA
             let isFlatBottom (c: Analysis.HeikenAshi) = c.Open = c.Low
             let isFlatTop (c: Analysis.HeikenAshi) = c.Open = c.High
             let increasingClosePrice (older: Analysis.HeikenAshi) (newer: Analysis.HeikenAshi) = newer.Close > older.Close
-            // let increasingHighPrice (prev: Analysis.HeikenAshi) (next: Analysis.HeikenAshi) = next.High > prev.High
+            let increasingHighPrice (prev: Analysis.HeikenAshi) (next: Analysis.HeikenAshi) = next.High > prev.High
             let decreasingClosePrice (older: Analysis.HeikenAshi) (newer: Analysis.HeikenAshi) = newer.Close < older.Close
-            // let decreasingLowPrice (older: Analysis.HeikenAshi) (newer: Analysis.HeikenAshi) = newer.Low < older.Low
+            let decreasingLowPrice (older: Analysis.HeikenAshi) (newer: Analysis.HeikenAshi) = newer.Low < older.Low
 
             (*
                 open long: 
@@ -148,8 +148,11 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: Analysis.HeikenA
                 let twoIncreasingCloses = 
                     increasingClosePrice previousClosedCandle latestClosedCandle &&
                     increasingClosePrice previousMinusOneClosedCandle previousClosedCandle
+                let twoIncreasingHighs =
+                    increasingHighPrice previousClosedCandle latestClosedCandle && 
+                    increasingHighPrice previousMinusOneClosedCandle previousClosedCandle
                     
-                twoPreviousFBCandles && twoIncreasingCloses
+                twoPreviousFBCandles && twoIncreasingCloses && twoIncreasingHighs
 
             (*
                 open short:
@@ -163,8 +166,11 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: Analysis.HeikenA
                 let twoDecreasingCloses = 
                     decreasingClosePrice previousClosedCandle latestClosedCandle &&
                     decreasingClosePrice previousMinusOneClosedCandle previousClosedCandle
-                    
-                twoPreviousFTCandles && twoDecreasingCloses
+                let twoDecreasingLows = 
+                    decreasingLowPrice previousClosedCandle latestClosedCandle &&
+                    decreasingLowPrice previousMinusOneClosedCandle previousClosedCandle
+
+                twoPreviousFTCandles && twoDecreasingCloses && twoDecreasingLows
 
             Log.Debug ("Analysing HA candles for {Exchange}:{Symbol}. Open: {OpenTime}, Interval: {IntervalMinutes}. " + 
                 "FB Low-Open: {FBDiff} {FB}, FT High-Open: {FTDiff} {FT}, " +
