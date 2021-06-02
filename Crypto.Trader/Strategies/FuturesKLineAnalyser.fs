@@ -144,10 +144,11 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: seq<Analysis.Hei
             let shouldShort =
                 ftCandle.[0] && ftCandle.[1] && (close.[0] < close.[1]) && (close.[1] < close.[2])
 
-
             let latestCandle = candleArray.[0]
 
-            Log.Debug ("Analysing HA candles for {Exchange}:{Symbol}. {OpenTime}. FB Low-Open: {FBDiff} {FB}, FT High-Open: {FTDiff} {FT}, Green: {G}, Red: {R}",
+            Log.Debug ("Analysing HA candles for {Exchange}:{Symbol}. Open: {OpenTime}, Interval: {IntervalMinutes}. " + 
+                "FB Low-Open: {FBDiff} {FB}, FT High-Open: {FTDiff} {FT}, " +
+                "Green: {Green}, Red: {Red}",
                     exchangeId,
                     latestCandle.Symbol.ToString(),
                     latestCandle.OpenTime,
@@ -156,7 +157,8 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: seq<Analysis.Hei
                     latestCandle.High - latestCandle.Open,
                     ftCandle.[0],
                     greenCandle.[0],
-                    redCandle.[0]
+                    redCandle.[0],
+                    latestCandle.IntervalMinutes
                 )
 
             return!

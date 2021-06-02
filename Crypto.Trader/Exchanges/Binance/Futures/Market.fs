@@ -4,6 +4,7 @@ open AnalysisTypes
 open FsToolkit.ErrorHandling
 open Binance.Futures.Common
 open System
+open Serilog
 
 let private fromBinanceKLine (s:Symbol) (k: Binance.Net.Interfaces.IBinanceKline): KLine =
     let intervalMinutes = Math.Round((k.CloseTime - k.OpenTime).TotalMinutes) |> int
@@ -61,7 +62,9 @@ let private getKLines (q: KLineQuery) : Async<Result<KLine seq, KLineError>> =
             | Some response ->
                 if not response.Success
                 then Result.Error (Error <| sprintf "%A: %s" response.Error.Code response.Error.Message)
-                else Ok (response.Data |> Seq.map (fromBinanceKLine q.Symbol))
+                else 
+                    Log.Debug ("Binance kline response - latest candle {LatestCandle}", response.Data |> Seq.tryHead)
+                    Ok (response.Data |> Seq.map (fromBinanceKLine q.Symbol))
 
         return! result  
     }
