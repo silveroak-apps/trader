@@ -88,20 +88,13 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
                 (candleCloseTime - raisedEvents.[eventKey]).TotalMinutes,
                 recentEventToleranceMinutes)
         else
-            Log.Information ("About to raise a market event for {Action} {PositionSide} {Symbol} on {Exchange}, candle age: {CandleDataAge}: ",
-                a, p, candle.Symbol, candleDataAge)
+            Log.Information ("About to raise a market event for {Action} {PositionSide} {Symbol}, candle age: {CandleDataAge}: ",
+                a, p, candle.Symbol,  candleDataAge)
             let (Symbol symbol) = candle.Symbol
             let! exchange = Trader.Exchanges.lookupExchange exchangeId
-            let action = 
-                match a, p with
-                | SignalAction.OPEN, PositionSide.LONG  -> "buy"
-                | SignalAction.CLOSE, PositionSide.LONG -> "sell"
-                | SignalAction.OPEN, PositionSide.SHORT  -> "sell"
-                | SignalAction.CLOSE, PositionSide.SHORT -> "buy"
-                | _ -> ""
 
             let marketEvent = {
-                MarketEvent.Name = sprintf "%s_%s_futures_kline_war_1m_%s" action ((string p).ToLowerInvariant()) (string symbol)
+                MarketEvent.Name = sprintf "%s_%s_futures_kline_war_1m_%s" (string a) (string p) (string symbol) |> (fun s -> s.ToLowerInvariant())
                 Price = candle.Original.Close
                 Symbol = symbol.ToUpperInvariant()
                 Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
@@ -148,17 +141,11 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: seq<Analysis.Hei
 
             Log.Debug ("Analysing HA candles for {Exchange}:{Symbol}. Open: {OpenTime}, Interval: {IntervalMinutes}. " + 
                 "FB Low-Open: {FBDiff} {FB}, FT High-Open: {FTDiff} {FT}, " +
-                "Green: {Green}, Red: {Red}",
-                    exchangeId,
-                    latestCandle.Symbol.ToString(),
-                    latestCandle.OpenTime,
-                    latestCandle.Low - latestCandle.Open,
-                    fbCandle.[0],
-                    latestCandle.High - latestCandle.Open,
-                    ftCandle.[0],
-                    greenCandle.[0],
-                    redCandle.[0],
-                    latestCandle.IntervalMinutes
+                "Colour: {Colour}",
+                    exchangeId, string latestCandle.Symbol, latestCandle.OpenTime, latestCandle.IntervalMinutes,
+                    latestCandle.Low - latestCandle.Open, fbCandle.[0],
+                    latestCandle.High - latestCandle.Open, ftCandle.[0],
+                    if greenCandle.[0] then "Green" elif redCandle.[0] then "Red" else "Unknown!"
                 )
 
             return!
