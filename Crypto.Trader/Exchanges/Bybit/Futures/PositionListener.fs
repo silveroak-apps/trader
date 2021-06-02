@@ -1,7 +1,7 @@
 module Bybit.Futures.PositionListener
 open Types
 
-let private trackPositions (agent: MailboxProcessor<PositionCommand>) (symbols: string seq) =
+let private trackPositions (agent: MailboxProcessor<PositionCommand>) (symbols: Symbol seq) =
     async {
         return ()
     }
@@ -20,6 +20,6 @@ let getExchange1() = {
         failwith "Not Implemented"
     member __.QueryOrder(o: OrderQueryInfo): Async<OrderStatus> = 
         failwith "Not Implemented"
-    member __.TrackPositions(agent: MailboxProcessor<PositionCommand>, symbols: seq<string>): Async<unit> = 
+    member __.TrackPositions(agent: MailboxProcessor<PositionCommand>, symbols: Symbol seq): Async<unit> = 
         trackPositions agent symbols
 }

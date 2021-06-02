@@ -372,7 +372,7 @@ let private mkTradeAgent (exchanges: IFuturesExchange seq) =
         messageLoop()
     )
 
-let trackPositions (exchanges: IFuturesExchange seq) (symbols: string seq) =
+let trackPositions (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
     use _x = LogContext.PushProperty ("Futures", true)
 
     Log.Information "Starting socket client for Binance futures user data stream"

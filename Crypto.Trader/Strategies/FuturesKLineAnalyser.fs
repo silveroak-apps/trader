@@ -145,7 +145,7 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: seq<Analysis.Hei
                     exchangeId, string latestCandle.Symbol, latestCandle.OpenTime, latestCandle.IntervalMinutes,
                     latestCandle.Low - latestCandle.Open, fbCandle.[0],
                     latestCandle.High - latestCandle.Open, ftCandle.[0],
-                    if greenCandle.[0] then "Green" elif redCandle.[0] then "Red" else "Unknown!"
+                    if greenCandle.[0] then "Green" elif redCandle.[0] then "Red" else ""
                 )
 
             return!
@@ -205,9 +205,7 @@ let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> 
     }
     
 
-let startAnalysis () =
-    let exchanges = Trader.Exchanges.knownExchanges.Values
-    let symbols = Trader.Exchanges.allSymbols |> Seq.map Symbol
+let startAnalysis (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
     Seq.allPairs exchanges symbols
     |> Seq.map (fun (exchange, symbol) ->
             let intervalFn () =

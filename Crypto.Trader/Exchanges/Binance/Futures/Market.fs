@@ -67,7 +67,8 @@ let private getKLines (q: KLineQuery) : Async<Result<KLine seq, KLineError>> =
                     then
                         Log.Warning ("No klines in Binance response")
                     else
-                        Log.Debug ("Binance kline response - latest candle {@LatestCandle}", 
+                        Log.Debug ("Binance kline response - latest candle for {Symbol} {@LatestCandle}", 
+                                    string q.Symbol,
                                     response.Data |> Seq.last)
                     Ok (response.Data |> Seq.map (fromBinanceKLine q.Symbol))
 

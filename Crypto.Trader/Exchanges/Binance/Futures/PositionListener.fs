@@ -129,7 +129,7 @@ let private subscribeToUserStream (tradeAgent: MailboxProcessor<PositionCommand>
        )
     |> keepUserStreamSubscriptionAlive clientFutures listenKey
 
-let private listenToFuturesPriceTickerForSymbol (tradeAgent: MailboxProcessor<PositionCommand>) (socketClientFutures: IBinanceSocketClientFutures) (symbol: string) =
+let private listenToFuturesPriceTickerForSymbol (tradeAgent: MailboxProcessor<PositionCommand>) (socketClientFutures: IBinanceSocketClientFutures) (Symbol symbol: Symbol) =
     let subscription = 
         socketClientFutures.SubscribeToBookTickerUpdates (
             symbol,
@@ -146,7 +146,7 @@ let private listenToFuturesPriceTickerForSymbol (tradeAgent: MailboxProcessor<Po
     Log.Information("Subscribing to futures price ticker for {Symbol}. Success: {Result}. Error: {Error}", symbol, subscription.Success, subscription.Error)
     subscription.Success
 
-let private listenFutures (tradeAgent: MailboxProcessor<PositionCommand>) (clientFutures: IBinanceClientFutures) (socketClientFutures: IBinanceSocketClientFutures) (symbols: string seq) =
+let private listenFutures (tradeAgent: MailboxProcessor<PositionCommand>) (clientFutures: IBinanceClientFutures) (socketClientFutures: IBinanceSocketClientFutures) (symbols: Symbol seq) =
     let listenKeyResponse = clientFutures.UserStream.StartUserStream()
     if not listenKeyResponse.Success
     then failwith (sprintf "Error starting user stream: [%d] - %s" (listenKeyResponse.Error.Code.GetValueOrDefault()) listenKeyResponse.Error.Message)
@@ -157,7 +157,7 @@ let private listenFutures (tradeAgent: MailboxProcessor<PositionCommand>) (clien
         |> Seq.map (listenToFuturesPriceTickerForSymbol tradeAgent socketClientFutures)
         |> Seq.reduce ((&&))
 
-let trackPositions (tradeAgent: MailboxProcessor<PositionCommand>) (symbols: string seq) =
+let trackPositions (tradeAgent: MailboxProcessor<PositionCommand>) (symbols: Symbol seq) =
     use _x = LogContext.PushProperty ("Futures", true)
 
     let client = getBaseClient ()
@@ -165,7 +165,7 @@ let trackPositions (tradeAgent: MailboxProcessor<PositionCommand>) (symbols: str
 
     Log.Information "Starting socket client for Binance futures user data stream"
     
-    let usdtSymbols = symbols |> Seq.filter (fun s -> s.EndsWith "USDT")
+    let usdtSymbols = symbols |> Seq.filter (fun (Symbol s) -> s.EndsWith "USDT")
     let coinMSymbols = symbols |> Seq.except usdtSymbols
     listenFutures tradeAgent client.FuturesCoin socketClient.FuturesCoin coinMSymbols &&
     listenFutures tradeAgent client.FuturesUsdt socketClient.FuturesUsdt usdtSymbols
