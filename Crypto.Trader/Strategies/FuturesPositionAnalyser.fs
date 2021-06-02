@@ -39,7 +39,7 @@ let private makePositionKey (Symbol symbol) (positionSide: PositionSide) = Posit
 
 let private closeSignal (exchangeName: string) (position: PositionAnalysis) (price: OrderBookTickerInfo) =
     async {
-        let strategy = "position_analyser_close"
+        let strategy = sprintf "position_analyser_close_%s" (string position.PositionSide) |> (fun s -> s.ToLowerInvariant())
         // check if we have already attempted a close recently
         if position.CloseRaisedTime.IsSome
         then
