@@ -167,5 +167,15 @@ let trackPositions (tradeAgent: MailboxProcessor<PositionCommand>) (symbols: Sym
     
     let usdtSymbols = symbols |> Seq.filter (fun (Symbol s) -> s.EndsWith "USDT")
     let coinMSymbols = symbols |> Seq.except usdtSymbols
-    listenFutures tradeAgent client.FuturesCoin socketClient.FuturesCoin coinMSymbols &&
-    listenFutures tradeAgent client.FuturesUsdt socketClient.FuturesUsdt usdtSymbols
+
+    let listenCOINM = 
+        if not <| Seq.isEmpty coinMSymbols
+        then listenFutures tradeAgent client.FuturesCoin socketClient.FuturesCoin coinMSymbols
+        else true
+
+    let listenUSDT = 
+        if not <| Seq.isEmpty usdtSymbols
+        then listenFutures tradeAgent client.FuturesUsdt socketClient.FuturesUsdt usdtSymbols
+        else true
+
+    listenUSDT && listenCOINM

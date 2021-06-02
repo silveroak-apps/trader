@@ -255,7 +255,7 @@ let getExchange() = {
         member __.GetFuturesPositions symbolFilter = getPositions symbolFilter
         member __.TrackPositions (agent, symbols) = async { 
                 let started = PositionListener.trackPositions agent symbols
-                Log.Information ("started Binance position tracker : {Success}", started)
+                Log.Information ("Started Binance position tracker : {Success}", started)
                 return () 
             }
     }
