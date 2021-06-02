@@ -36,9 +36,9 @@ let private getCandles (exchangeId: ExchangeId) (symbol: Symbol) =
     | true, mp ->
         let q = {
             KLineQuery.IntervalMinutes = 1
-            Limit = 15
+            Limit = 99
             Symbol = symbol
-            OpenTime = DateTimeOffset.UtcNow.AddMinutes -15.0
+            OpenTime = DateTimeOffset.UtcNow.AddMinutes -99.0
             Type = klineTypeFor symbol
         }
         mp.GetKLines q
@@ -98,7 +98,7 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
                 Price = candle.Original.Close
                 Symbol = symbol.ToUpperInvariant()
                 Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
-                TimeFrame = "1" // hardcode for now
+                TimeFrame = candle.IntervalMinutes
                 Exchange = exchange.Name
                 Category = sprintf "futures_kline_war_%s" (string symbol)
                 Contracts = 0M // no contracts for now: TODO pull from config or somewhere else?
@@ -114,42 +114,75 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
 
 let private analyseCandles (exchangeId: ExchangeId) (haCandles: Analysis.HeikenAshi seq) =
     asyncResult {
-        let candleArray = haCandles |> Seq.toArray
-        if Array.length candleArray > 2
+        let candleArray = haCandles |> Seq.sortByDescending (fun c -> c.OpenTime) |> Seq.toArray
+
+        if Array.length candleArray > 2 // we need atleast 3 candles to analyse
         then
-            let fbCandle    = candleArray |> Array.map (fun c -> c.Low   = c.Open) 
-            let ftCandle    = candleArray |> Array.map (fun c -> c.High  = c.Open)
-            let redCandle   = candleArray |> Array.map (fun c -> c.Close < c.Open)
-            let greenCandle = candleArray |> Array.map (fun c -> c.Close > c.Open)
-            let high        = candleArray |> Array.map (fun c -> c.High)
-            let low         = candleArray |> Array.map (fun c -> c.Low)
-            let close       = candleArray |> Array.map (fun c -> c.Close)
-            let open_       = candleArray |> Array.map (fun c -> c.Open)
-
             // 0 is latest candle, 1 is previous and so on...
-            //close > close[1] and close[1] > close[2] and fbCandle and fbCandle[1] 
-            let shouldLong = 
-                fbCandle.[0] && fbCandle.[1] && (close.[0] > close.[1]) && (close.[1] > close.[2])
 
-            //open < open[1] and open[1] < open[2] and ftCandle and ftCandle[1] 
-            let shouldShort =
-                ftCandle.[0] && ftCandle.[1] && (close.[0] < close.[1]) && (close.[1] < close.[2])
+            let latestCandle = candleArray.[0] // this could be a live candle if the close time hasn't passed
+            let isLatestCandleLive = 
+                let closeTime = latestCandle.OpenTime.AddMinutes <| float latestCandle.IntervalMinutes
+                DateTimeOffset.UtcNow < closeTime.ToUniversalTime ()
 
-            let latestCandle = candleArray.[0]
+            let latestClosedCandle = if isLatestCandleLive then candleArray.[1] else latestCandle
+            let previousClosedCandle = if isLatestCandleLive then candleArray.[2] else candleArray.[1]
+            let previousMinusOneClosedCandle = if isLatestCandleLive then candleArray.[3] else candleArray.[2]
+
+            let isFlatBottom (c: Analysis.HeikenAshi) = c.Open = c.Low
+            let isFlatTop (c: Analysis.HeikenAshi) = c.Open = c.High
+            let increasingClosePrice (older: Analysis.HeikenAshi) (newer: Analysis.HeikenAshi) = newer.Close > older.Close
+            // let increasingHighPrice (prev: Analysis.HeikenAshi) (next: Analysis.HeikenAshi) = next.High > prev.High
+            let decreasingClosePrice (older: Analysis.HeikenAshi) (newer: Analysis.HeikenAshi) = newer.Close < older.Close
+            // let decreasingLowPrice (older: Analysis.HeikenAshi) (newer: Analysis.HeikenAshi) = newer.Low < older.Low
+
+            (*
+                open long: 
+                    two most recent closed candles -->
+                    - need to be FB, and 
+                    - increasing close price, and
+                    // - increasing high price
+            *)
+            let shouldOpenLong =
+                let twoPreviousFBCandles = isFlatBottom latestClosedCandle && isFlatBottom previousClosedCandle
+                let twoIncreasingCloses = 
+                    increasingClosePrice previousClosedCandle latestClosedCandle &&
+                    increasingClosePrice previousMinusOneClosedCandle previousClosedCandle
+                    
+                twoPreviousFBCandles && twoIncreasingCloses
+
+            (*
+                open short:
+                    two most recent closed candles --> 
+                    - need to be FT, and
+                    - decreasing close price, and
+                    // - decreasing low price
+            *)
+            let shouldOpenShort =
+                let twoPreviousFTCandles = isFlatTop latestClosedCandle && isFlatTop previousClosedCandle
+                let twoDecreasingCloses = 
+                    decreasingClosePrice previousClosedCandle latestClosedCandle &&
+                    decreasingClosePrice previousMinusOneClosedCandle previousClosedCandle
+                    
+                twoPreviousFTCandles && twoDecreasingCloses
 
             Log.Debug ("Analysing HA candles for {Exchange}:{Symbol}. Open: {OpenTime}, Interval: {IntervalMinutes}. " + 
                 "FB Low-Open: {FBDiff} {FB}, FT High-Open: {FTDiff} {FT}, " +
-                "Colour: {Colour}",
+                "Colour: {LatestClosedCandleColour}, " + 
+                "IsLatestCandleLive: {IsLatestCandleLive}, " +
+                "LatestClosedCandle: {LatestClosedCandle}",
                     exchangeId, string latestCandle.Symbol, latestCandle.OpenTime, latestCandle.IntervalMinutes,
-                    latestCandle.Low - latestCandle.Open, fbCandle.[0],
-                    latestCandle.High - latestCandle.Open, ftCandle.[0],
-                    if greenCandle.[0] then "Green" elif redCandle.[0] then "Red" else ""
+                    latestClosedCandle.Low - latestClosedCandle.Open, isFlatBottom latestClosedCandle,
+                    latestClosedCandle.High - latestClosedCandle.Open, isFlatTop latestClosedCandle,
+                    (if latestClosedCandle.Close > latestClosedCandle.Open then "Green" elif latestClosedCandle.Close < latestClosedCandle.Open then "Red" else "Flat"),
+                    isLatestCandleLive,
+                    latestClosedCandle
                 )
 
             return!
-                if shouldLong
+                if shouldOpenLong
                 then raiseEvent exchangeId OPEN LONG latestCandle
-                elif shouldShort
+                elif shouldOpenShort
                 then raiseEvent exchangeId OPEN SHORT latestCandle
                 else AsyncResult.ofResult(Ok ())
         else
@@ -176,7 +209,14 @@ let private teeUpdateFetchTime (exchangeId: ExchangeId) (symbol: Symbol) (candle
         let value = candlesFetchTimes.[candleKey]
         candlesFetchTimes.TryRemove(candleKey, ref value) |> ignore
     else
-        let fetchTime = candles |> Seq.head |> (fun c -> c.OpenTime)
+        let fetchTime = 
+            if not (candles |> Seq.isEmpty)
+            then
+                candles
+                |> Seq.maxBy (fun c -> c.OpenTime) // we need newest candle to see what its open time is.
+                |> (fun c -> c.OpenTime)
+            else DateTimeOffset.MinValue
+
         Log.Debug ("Storing fetch time for key {CandleKey}: {Time}", candleKey, fetchTime)
         candlesFetchTimes.[candleKey] <- fetchTime
 
@@ -184,7 +224,6 @@ let private teeUpdateFetchTime (exchangeId: ExchangeId) (symbol: Symbol) (candle
 
 let private analyseHACandles (exchangeId: ExchangeId) (symbol: Symbol) =
     getCandles exchangeId symbol
-    |> AsyncResult.map (fun cs -> cs |> Seq.sortByDescending (fun c -> c.OpenTime))
     |> AsyncResult.map (teeUpdateFetchTime exchangeId symbol)
     |> AsyncResult.map Analysis.heikenAshi
     |> AsyncResult.bind (analyseCandles exchangeId)

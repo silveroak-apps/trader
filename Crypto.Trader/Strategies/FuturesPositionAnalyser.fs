@@ -14,8 +14,6 @@ open Strategies.Common
 
 type PositionKey = PositionKey of string
 
-// TODO move this to db config table
-let private tradeFeesPercent = 0.04m // assume the worst: current market order fees for Binance is 0.04% (https://www.binance.com/en/support/articles/360033544231)
 type private PositionAnalysis = {
     EntryPrice: decimal
     Symbol: Symbol
@@ -55,9 +53,9 @@ let private closeSignal (exchangeName: string) (position: PositionAnalysis) (pri
                 Price = price.BidPrice
                 Symbol = symbol.ToUpperInvariant()
                 Market = if (symbol.ToUpperInvariant()).EndsWith("PERP") then "USD" else "USDT" // hardcode for now
-                TimeFrame = "1" // hardcode for now
+                TimeFrame = 1 // hardcode for now
                 Exchange = exchangeName
-                Category = "StopLoss"
+                Category = "stopLoss"
                 Contracts = Math.Abs(position.PositionAmount)
             }
 
@@ -182,10 +180,20 @@ let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal opt
     let previousStopLossValue = position.StoplossPnlPercentValue
     let gain = Option.defaultValue 0M gainOpt
 
-    let trailingTakeProfitLevel = 1M * decimal position.Leverage // % - TODO move to config
-    let trailingDistance = 0.5M * decimal position.Leverage // % - TODO move to config
+    (*
+        With a leverage of 5x, we get:
 
-    let breakEvenLevel = 0.4M * decimal position.Leverage // % - TODO move to config
+            minStopLoss = -5%
+            trailingTakeProfitLevel = 4% (this is where we start trailing)
+            trailingDistance = 1% (so, if gain/profit hits 4% and then goes down to 3%, we close!)
+            breakEvenTrigger = 1.65% (this is fixed stoploss once we break even: i.e once we break even, we should never close below this ???)
+            expectedCostsForTradeCycle (breakEvenStopLoss) = 1.1%
+    *)
+
+    let trailingTakeProfitLevel = 0.8M * decimal position.Leverage // % - TODO move to config
+    let trailingDistance = 0.2M * decimal position.Leverage // % - TODO move to config
+
+    let breakEvenTrigger = 0.33M * decimal position.Leverage // % - TODO move to config
 
     let stopLossOfAtleast prevStopLoss newStopLoss = 
         // by this time we've already got a stop loss.
@@ -206,24 +214,28 @@ let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal opt
         let sl = stopLossOfAtleast v newStopLoss
         sl
 
-    | Some v when gain >= breakEvenLevel ->
-        let newStopLoss = breakEvenLevel / 2M
+    | Some v when gain >= breakEvenTrigger ->
+        let slippageAllowance = Strategies.Common.tracePriceSlippageAllowance
+        let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
+        let expectedCostsForTradeCycle = (slippageAllowance + (tradeFeesPercent * decimal position.Leverage)) * 2M
+        let newStopLoss = expectedCostsForTradeCycle // we need to recover costs to breakEven
         let sl = stopLossOfAtleast v newStopLoss
         sl
 
     | v -> v // no change in stop loss
 
 let private calculatePnl (position: PositionAnalysis) (price: OrderBookTickerInfo) =
+    let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
     let qty = decimal <| Math.Abs(position.PositionAmount)
     let pnl = 
         match position.PositionSide with
         | LONG ->
-            let grossPnl = qty * (price.AskPrice - position.EntryPrice)
-            let fees = grossPnl * tradeFeesPercent
+            let grossPnl = qty * (price.AskPrice - position.EntryPrice) // this considers leverage, because qty is the full position size
+            let fees = grossPnl * tradeFeesPercent * 2M // *2 because we need to consider fees for open and close
             grossPnl - fees |> Some
         | SHORT ->
-            let grossPnl = qty * (position.EntryPrice - price.BidPrice)
-            let fees = grossPnl * tradeFeesPercent
+            let grossPnl = qty * (position.EntryPrice - price.BidPrice) // this considers leverage, because qty is the full position size
+            let fees = grossPnl * tradeFeesPercent * 2M // *2 because we need to consider fees for open and close
             grossPnl - fees |> Some
         | _ -> None
     let pnlPercent =

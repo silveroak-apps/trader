@@ -13,7 +13,7 @@ type MarketEvent = {
     Price: decimal
     Symbol: string
     Market: string
-    TimeFrame: string
+    TimeFrame: int
     Exchange: string
     Category: string
     Contracts: decimal
@@ -46,3 +46,7 @@ let raiseMarketEvent (marketEvent: MarketEvent) =
         | _ ->
             return Error ("Position analyser not raising any events because MarketEventUrl is not configured")
     }
+
+// TODO move slippage to db config
+let tracePriceSlippageAllowance = 0.3M // 0.3% change in price is the max we tolerate before placing a trade
+let futuresTradeFeesPercent = 0.05M // Futures trade fees (without leverage in each direction) assume the worst: current market order fees for Binance is 0.04% (https://www.binance.com/en/support/articles/360033544231)

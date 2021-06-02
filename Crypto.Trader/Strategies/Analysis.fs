@@ -15,6 +15,8 @@ type HeikenAshi = {
     Original: KLine
 }
 
+let round4 (d: decimal) = Math.Round(d, 4)
+
 (*
 From: https://school.stockcharts.com/doku.php?id=chart_analysis:heikin_ashi
 1. The Heikin-Ashi Close is simply an average of the open, 
@@ -46,10 +48,10 @@ let heikenAshi (candles: KLine seq)  =
         let ha = {
             HeikenAshi.OpenTime = current.OpenTime
             IntervalMinutes = current.IntervalMinutes
-            Close = closePrice
-            Open = openPrice
-            High = [current.High; openPrice; closePrice] |> List.max
-            Low = [current.Low; openPrice; closePrice] |> List.min
+            Close = closePrice |> round4
+            Open = openPrice |> round4
+            High = [current.High; openPrice; closePrice] |> List.max |> round4
+            Low = [current.Low; openPrice; closePrice] |> List.min |> round4
             Volume = current.Volume
             Symbol = current.Symbol
 
@@ -68,10 +70,10 @@ let heikenAshi (candles: KLine seq)  =
             let newHA = {
                 HeikenAshi.OpenTime = currentKLine.OpenTime
                 IntervalMinutes = currentKLine.IntervalMinutes
-                Close = closePrice
-                Open = openPrice
-                High = [currentKLine.High; openPrice; closePrice] |> List.max
-                Low = [currentKLine.Low; openPrice; closePrice] |> List.min
+                Close = closePrice |> round4
+                Open = openPrice |> round4
+                High = [currentKLine.High; openPrice; closePrice] |> List.max |> round4
+                Low = [currentKLine.Low; openPrice; closePrice] |> List.min |> round4
                 Volume = currentKLine.Volume
                 Symbol = currentKLine.Symbol
 
@@ -82,7 +84,8 @@ let heikenAshi (candles: KLine seq)  =
 
     if Seq.length candles > 0
     then
-        let candlesArray = candles |> Seq.toArray
+        // need ascending time sort because of how HA depends on previous candles
+        let candlesArray = candles  |> Seq.sortBy (fun c -> c.OpenTime) |> Seq.toArray
         let firstHA = toFirstHA <| Seq.head candles
         let initialState = (firstHA, candlesArray, 0)
         Seq.unfold generateHA initialState

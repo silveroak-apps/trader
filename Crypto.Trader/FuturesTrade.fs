@@ -367,7 +367,7 @@ let private mkTradeAgent
                         let attemptCount = 1
                         let maxAttempts = if s.Action = "OPEN" then 5 else 100
                         let cancellationDelay = if s.Action = "OPEN" then 5 else 5 // seconds
-                        let maxSlippage = 0.3M // % 
+                        let maxSlippage = Strategies.Common.tracePriceSlippageAllowance // % TODO should we pass this from outside?
 
                         (*
                         1 find our which exchange to place order
