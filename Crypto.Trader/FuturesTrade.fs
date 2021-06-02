@@ -71,6 +71,7 @@ let toExchangeOrder (signalCommand: FuturesSignalCommandView) =
                 OriginalQty = signalCommand.Quantity
                 ExchangeOrderIdSecondary = string signalCommand.SignalId
                 SignalId = signalCommand.SignalId
+                SignalCommandId = signalCommand.Id
                 UpdatedTime = DateTime.UtcNow
                 ExchangeId = signalCommand.ExchangeId
                 OrderSide = string os

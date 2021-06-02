@@ -38,6 +38,7 @@ type ExchangeOrder = {
     ExchangeOrderId: string
     ExchangeOrderIdSecondary: string
     SignalId: int64
+    SignalCommandId: int64
     CreatedTime: DateTime
     UpdatedTime: DateTime
     OriginalQty: decimal

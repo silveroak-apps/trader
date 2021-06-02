@@ -217,7 +217,8 @@ let private saveOrderAndSignal (b: ExchangeOrder) (signalUpdates: seq<string * o
             price, executed_price,
             original_qty, executed_qty, 
             fee_currency, fee_amount,
-            exchange_order_id, exchange_order_id_secondary, signal_id, 
+            exchange_order_id, exchange_order_id_secondary, 
+            signal_id, signal_command_id,
             last_trade_id,
             created_time, updated_time
             )
@@ -227,7 +228,8 @@ let private saveOrderAndSignal (b: ExchangeOrder) (signalUpdates: seq<string * o
             @Price, @ExecutedPrice,
             @OriginalQty, @ExecutedQty,
             @FeeCurrency, @FeeAmount,
-            @ExchangeOrderId, @ExchangeOrderIdSecondary, @SignalId, 
+            @ExchangeOrderId, @ExchangeOrderIdSecondary, 
+            @SignalId, @SignalCommandId,
             @LastTradeId,
             @CreatedTime, @UpdatedTime
            )

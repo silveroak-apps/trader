@@ -230,6 +230,7 @@ let private placeOrder getOrdersForSignal (saveOrder: ExchangeOrder -> Async<Res
                                         OriginalQty = orderInput.Quantity / 1M<qty>
                                         ExchangeOrderIdSecondary = string orderInput.SignalId
                                         SignalId = s.SignalId
+                                        SignalCommandId = 0L
                                         UpdatedTime = DateTime.UtcNow
                                         ExchangeId = s.ExchangeId
                                         OrderSide = string orderInput.OrderSide
