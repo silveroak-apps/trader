@@ -224,12 +224,12 @@ let private getOrderBookCurrentPrice (Symbol s) =
                         ) 
     }
  
-let private getPositions (symbolFilter: string option) =
+let private getPositions (symbolFilter: Symbol option) =
     async {
         let client = getBaseClient()
         let! result =
             match symbolFilter with
-            | Some s ->
+            | Some (Symbol s) ->
                 if s.EndsWith "USDT"
                 then PositionListener.getUsdtPositionsFromBinanceAPI client.FuturesUsdt symbolFilter
                 else PositionListener.getCoinPositionsFromBinanceAPI client.FuturesCoin symbolFilter
@@ -256,6 +256,6 @@ let getExchange() = {
         member __.TrackPositions (agent, symbols) = async { 
                 let started = PositionListener.trackPositions agent symbols
                 Log.Information ("Started Binance position tracker : {Success}", started)
-                return () 
+                return ()
             }
     }

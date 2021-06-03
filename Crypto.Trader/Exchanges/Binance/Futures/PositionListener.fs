@@ -12,11 +12,11 @@ open FsToolkit.ErrorHandling
 open Types
 open Binance.Futures.Common
 
-let getUsdtPositionsFromBinanceAPI (client: IBinanceClientFuturesUsdt) (symbol: string option) =
+let getUsdtPositionsFromBinanceAPI (client: IBinanceClientFuturesUsdt) (symbol: Symbol option) =
     async {
         let! positionResult =
             match symbol with
-            | Some s -> client.GetPositionInformationAsync(symbol = s.Replace("_PERP", "")) //ugly hack
+            | Some (Symbol s) -> client.GetPositionInformationAsync(symbol = s.Replace("_PERP", "")) //ugly hack
             | None   -> client.GetPositionInformationAsync()
             |> Async.AwaitTask
         
@@ -46,11 +46,11 @@ let getUsdtPositionsFromBinanceAPI (client: IBinanceClientFuturesUsdt) (symbol: 
         return positions
     }
 
-let getCoinPositionsFromBinanceAPI (client: IBinanceClientFuturesCoin) (symbol: string option) =
+let getCoinPositionsFromBinanceAPI (client: IBinanceClientFuturesCoin) (symbol: Symbol option) =
     async {
         let! positionResult =
             match symbol with
-            | Some s -> client.GetPositionInformationAsync(pair = s.Replace("_PERP", ""))
+            | Some (Symbol s) -> client.GetPositionInformationAsync(pair = s.Replace("_PERP", ""))
             | None   -> client.GetPositionInformationAsync()
             |> Async.AwaitTask
 

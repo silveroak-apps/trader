@@ -93,7 +93,7 @@ let private printPositionSummary () =
         )
     Async.unit
 
-let private getPositionsFromExchange (exchange: IFuturesExchange) (symbol: string option) =
+let private getPositionsFromExchange (exchange: IFuturesExchange) (symbol: Symbol option) =
     async {
         let! positionsResult = exchange.GetFuturesPositions(symbol)
 
@@ -165,7 +165,7 @@ let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
                                 UnrealisedPnl = p.UnRealisedPnL
                         })
                     }
-            | false, (Symbol s) ->
+            | false, s->
                 getPositionsFromExchange exchange (Some s)
                 |> Async.map Seq.tryHead
         match pos' with

@@ -368,17 +368,17 @@ let private mkTradeAgent
                         let attemptCount = 1
                         let maxAttempts = if s.Action = "OPEN" then 5 else 100
                         let cancellationDelay = if s.Action = "OPEN" then 5 else 5 // seconds
-                        let maxSlippage = Strategies.Common.tracePriceSlippageAllowance // % TODO should we pass this from outside?
+                        let maxSlippage = Strategies.Common.tradePriceSlippageAllowance
 
                         (*
                         1 find our which exchange to place order
                         2 find latest orderbook price from exchange (handle errors + 3 retries to get latest price) 
-                        3 place order (handle network errors, Binance API errors etc and retry upto 3 times OR less -> till we get an orderID back)
+                        3 place order (handle network errors, Exchange API errors etc and retry upto 3 times OR less -> till we get an orderID back)
                         4 save order (handle errors + 3 retries for db errors)
                         5 wait for order to fill for 'x' seconds
                         6 query order (handle errors + 3 retries) 
                         6 if filled, save order (handle errors + 3 retries for db errors) --> done
-                        7 if not filled, cancel order (handle errors + 3 retries for network/Binance errors)
+                        7 if not filled, cancel order (handle errors + 3 retries for network/Exchange errors)
                         8 if not filled, repeat steps from 2 -> with a new order, and updated qty (only use remaining qty) : repeat 'n' times for OPEN, 'm' times for CLOSE
                         9 if retries at any stage are exhausted, give up
                         10 if we manage to fill order fully, saveOrder (the new ones that happen during retries + handle db save errors)
