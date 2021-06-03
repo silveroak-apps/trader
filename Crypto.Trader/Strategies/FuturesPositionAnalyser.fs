@@ -176,7 +176,7 @@ let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
      }
 
 let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal option) =
-    let minStopLoss = -1M * decimal position.Leverage // % - TODO move to config
+    let minStopLoss = -0.5M * decimal position.Leverage // % - TODO move to config
     let previousStopLossValue = position.StoplossPnlPercentValue
     let gain = Option.defaultValue 0M gainOpt
 
@@ -213,13 +213,13 @@ let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal opt
         let sl = stopLossOfAtleast v newStopLoss
         sl
 
-    | Some v when gain >= breakEvenTrigger ->
-        let slippageAllowance = Strategies.Common.tracePriceSlippageAllowance
-        let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
-        let expectedCostsForTradeCycle = (slippageAllowance + (tradeFeesPercent * decimal position.Leverage)) * 2M
-        let newStopLoss = expectedCostsForTradeCycle // we need to recover costs to breakEven
-        let sl = stopLossOfAtleast v newStopLoss
-        sl
+    // | Some v when gain >= breakEvenTrigger ->
+    //     let slippageAllowance = Strategies.Common.tracePriceSlippageAllowance
+    //     let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
+    //     let expectedCostsForTradeCycle = (slippageAllowance + (tradeFeesPercent * decimal position.Leverage)) * 2M
+    //     let newStopLoss = expectedCostsForTradeCycle // we need to recover costs to breakEven
+    //     let sl = stopLossOfAtleast v newStopLoss
+    //     sl
 
     | v -> v // no change in stop loss
 
