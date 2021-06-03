@@ -27,8 +27,7 @@ let run processValidSignals placeRealOrders =
         startHeartbeat "Trader"
         repeatEvery nSeconds (fun _ -> processValidSignals placeRealOrders) "Trader" // buy and sell
 
-[<EntryPoint>]
-let main (argv: string[]) =
+let main1 (argv: string[]) =
     try
         configureLogging ()
         Log.Information("Starting Crypto Trader")
@@ -73,3 +72,11 @@ let main (argv: string[]) =
         Log.CloseAndFlush()
         Async.Sleep 500 |> Async.RunSynchronously // just to be sure logs are all flushed
         -999
+
+[<EntryPoint>]
+let testMain _ =
+    // let orderInput = {
+    //     Types.OrderInputInfo.OrderSide = OrderSide.BUY
+    // }
+    // Bybit.Futures.Trade.placeOrder orderInput |> Async.RunSynchronously |> ignore
+    0

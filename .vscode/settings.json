@@ -1,4 +1,7 @@
 {
-    "FSharp.suggestSdkScripts": false,
-    "FSharp.fsacRuntime": "net"
+    "FSharp.fsacRuntime": "net",
+    "FSharp.enableAnalyzers": true,
+    "FSharp.enableMSBuildProjectGraph": false,
+    "FSharp.externalAutocomplete": true,
+    "FSharp.smartIndent": true
 }

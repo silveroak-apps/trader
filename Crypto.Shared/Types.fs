@@ -39,3 +39,9 @@ with
         | "short" -> SHORT
         | _ -> NOT_APPLICABLE
 
+type FuturesMarginMode = USDT | COINM
+with
+    static member FromString (s: string) = 
+        match s.ToLower() with
+        | "usdt" -> USDT
+        | _ -> COINM

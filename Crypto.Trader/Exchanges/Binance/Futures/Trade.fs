@@ -4,14 +4,12 @@ open Binance.Net
 open Binance.Net.Objects.Futures.FuturesData
 
 open System
-open Binance.ApiTypes
 open Types
 open Binance.Net.Interfaces.SubClients.Futures
 open Serilog
 
+open Exchanges.Common
 open Binance.Futures.Common
-
-type FuturesMode = USDT | COINM
 
 let private getClient futuresMode =
     let c = getBaseClient ()
@@ -53,11 +51,6 @@ let private toOrderInfoResult (orderData: BinanceFuturesPlacedOrder) =
                                 AvgPrice = orderData.AvgPrice |}
     } |> Ok
 
-let private getFuturesMode (symbol: string) =
-    if symbol.EndsWith("usdt", StringComparison.OrdinalIgnoreCase)
-    then USDT
-    else COINM
-
 let private orderTypeFrom (ot: OrderType) = 
     match ot with
     | LIMIT -> Enums.OrderType.Limit
@@ -65,7 +58,7 @@ let private orderTypeFrom (ot: OrderType) =
 
 let private placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
     let (Symbol s) = o.Symbol
-    let client = getClient (getFuturesMode s)
+    let client = getClient (getFuturesMode o.Symbol)
 
     let orderSide = 
         match o.OrderSide with
@@ -134,7 +127,7 @@ let private placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>
 
 let private queryOrderStatus (o: OrderQueryInfo) =
     let (Symbol symbol) = o.Symbol
-    let client = getClient (getFuturesMode symbol)
+    let client = getClient (getFuturesMode o.Symbol)
     let (OrderId sOrderId) = o.OrderId
 
     let parsed, orderId = Int64.TryParse sOrderId
@@ -154,7 +147,7 @@ let private queryOrderStatus (o: OrderQueryInfo) =
 
 let private cancelOrder (o: OrderQueryInfo) =
     let (Symbol symbol) = o.Symbol
-    let client = getClient (getFuturesMode symbol)
+    let client = getClient (getFuturesMode o.Symbol)
     let (OrderId sOrderId) = o.OrderId
 
     let parsed, orderId = Int64.TryParse sOrderId
@@ -175,7 +168,7 @@ let private getOrderBookCurrentPrice (Symbol s) =
     // COIN-M vs USDT futures
     // and I didn't bother to write an abstraction over it.
     async {
-        let futuresMode = getFuturesMode s
+        let futuresMode = getFuturesMode (Symbol s)
         match futuresMode with
         | USDT ->
             let! bookResponse = client.FuturesUsdt.Market.GetBookPricesAsync(s) |> Async.AwaitTask

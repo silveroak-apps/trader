@@ -1,22 +1,97 @@
 module Bybit.Futures.Trade
 
 open Types
-open Bybit.Futures
+open Bybit.Futures.Common
+open Exchanges.Common
 
-let getExchange() = {
-    new IFuturesExchange with
-    member __.CancelOrder(o: OrderQueryInfo): Async<Result<bool,string>> = 
-        failwith "Not Implemented"
-    member __.GetFuturesPositions(o: Symbol option): Async<Result<seq<ExchangePosition>,string>> = 
-        failwith "Not Implemented"
-    member __.GetOrderBookCurrentPrice(o: string): Async<Result<OrderBookTickerInfo,string>> = 
-        failwith "Not Implemented"
-    member __.Id   = ExchangeId Common.ExchangeId
-    member __.Name = "BybitFutures"
-    member __.PlaceOrder(o: OrderInputInfo): Async<Result<OrderInfo,OrderError>> = 
-        failwith "Not Implemented"
-    member __.QueryOrder(o: OrderQueryInfo): Async<OrderStatus> = 
-        failwith "Not Implemented"
-    member __.TrackPositions(agent: MailboxProcessor<PositionCommand>, symbols: Symbol seq): Async<unit> = 
-        PositionListener.trackPositions agent symbols
-}
+let private cfg = appConfig.GetSection "ByBit"
+
+let getApiKeyCfg () =
+    { ApiKey.Key = cfg.Item "FuturesKey"
+      Secret = cfg.Item "FuturesSecret" }
+
+// let o =
+//     { OrderSide = Types.OrderSide.BUY
+//       OrderType = Types.OrderType.LIMIT
+//       PositionSide = Types.PositionSide.LONG
+//       Price = 100M<price>
+//       Quantity = 1M<qty>
+//       SignalId = 1212L
+//       Symbol = Symbol "BTCUSD" }
+
+let private orderTypeFrom (ot: OrderType) =
+    match ot with
+    | LIMIT -> "limit"
+    | MARKET -> "market"
+
+let private orderSideFrom (os: OrderSide) =
+    match os with
+    | BUY -> "Buy"
+    | SELL -> "Sell"
+    | s -> failwith <| sprintf "Invalid order side: %A" s
+
+let private getBybitClientCfg () =
+    let apiKey = getApiKeyCfg () 
+    let config = BybitConfig.Default
+    config.AddApiKey (apiKey.Key, apiKey.Secret)
+    config
+        
+let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
+
+    async {
+        
+        let (Symbol symbol) = o.Symbol
+
+        let config = getBybitClientCfg ()
+
+        let timeInForce = "GoodTillCancel"
+        let responseTask =
+            match getFuturesMode o.Symbol with
+            | COINM -> 
+                let client = BybitCoinMApi(config)
+                client.OrderNewAsync(
+                    orderSideFrom o.OrderSide,
+                    symbol,
+                    orderTypeFrom o.OrderType,
+                    o.Quantity / 1M<qty>,
+                    timeInForce,
+                    price = float (o.Price / 1M<price>),
+                    orderLinkId = string o.SignalId
+                )
+            | USDT ->
+                let client = BybitUSDTApi(config)
+                client.LinearOrderNewAsync(
+                    symbol, 
+                    orderSideFrom o.OrderSide,
+                    orderTypeFrom o.OrderType,
+                    timeInForce,
+                    float <| (o.Quantity / 1M<qty>),
+                    float (o.Price / 1M<price>),
+                    orderLinkId = string o.SignalId
+                )
+
+        let! response = responseTask |> Async.AwaitTask
+        let jobj = response :?> Newtonsoft.Json.Linq.JObject
+
+        let orderResponse = jobj.ToObject<BybitOrderResponse>() // TODO do both COINM/USDT return the same type?
+        printfn "response:\n%A" orderResponse
+        return (Result.Error(OrderError "NOT IMPLEMENTED YET"))
+    }
+
+let getExchange () =
+    { new IFuturesExchange with
+        member __.Id = Types.ExchangeId Common.ExchangeId
+        member __.Name = "BybitFutures"
+
+        member __.CancelOrder(o: OrderQueryInfo) : Async<Result<bool, string>> = failwith "Not Implemented"
+        member __.PlaceOrder o = placeOrder o
+        member __.QueryOrder(o: OrderQueryInfo) : Async<OrderStatus> = failwith "Not Implemented"
+
+        member __.GetOrderBookCurrentPrice(o: string) : Async<Result<OrderBookTickerInfo, string>> =
+            failwith "Not Implemented"
+
+        member __.GetFuturesPositions(o: Symbol option) : Async<Result<seq<ExchangePosition>, string>> =
+            failwith "Not Implemented"
+
+        member __.TrackPositions(agent, symbols) =
+            PositionListener.trackPositions agent symbols }
