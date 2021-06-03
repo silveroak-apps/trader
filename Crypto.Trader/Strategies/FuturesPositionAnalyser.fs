@@ -14,7 +14,7 @@ open Strategies.Common
 
 type PositionKey = PositionKey of string
 
-type private PositionAnalysis = {
+type PositionAnalysis = {
     EntryPrice: decimal
     Symbol: Symbol
     IsolatedMargin: decimal
@@ -175,8 +175,9 @@ let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
             positions.Remove key |> ignore
      }
 
-let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal option) =
+let calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal option) =
     let minStopLoss = -1M * decimal position.Leverage // % - TODO move to config
+    // let previousGain = Option.defaultValue 0M position.CalculatedPnlPercent
     let previousStopLossValue = position.StoplossPnlPercentValue
     let gain = Option.defaultValue 0M gainOpt
 
@@ -184,16 +185,15 @@ let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal opt
         With a leverage of 5x, we get:
 
             minStopLoss = -5%
-            trailingTakeProfitLevel = 4% (this is where we start trailing)
-            trailingDistance = 1% (so, if gain/profit hits 4% and then goes down to 3%, we close!)
-            breakEvenTrigger = 1.65% (this is fixed stoploss once we break even: i.e once we break even, we should never close below this ???)
-            expectedCostsForTradeCycle (breakEvenStopLoss) = 1.1%
+            stopLossTriggerLevel = 4% (this is where we start trailing up)
+            trailingDistance is calculated dynamically based on gain (using stopLossFactor)
     *)
 
-    let trailingTakeProfitLevel = 0.8M * decimal position.Leverage // % - TODO move to config
-    let trailingDistance = 0.2M * decimal position.Leverage // % - TODO move to config
+    let stopLossTriggerLevel = 0M * decimal position.Leverage // % - TODO move to config
+    let stopLossFactor = 0.2M // magic number: see story 127 // % - TODO move to config
 
-    let breakEvenTrigger = 0.33M * decimal position.Leverage // % - TODO move to config
+    let round2 (d: decimal) = Math.Round (d, 2)   
+ 
     let stopLossOfAtleast prevStopLoss newStopLoss = 
         // by this time we've already got a stop loss.
         // we only ever change stoploss upward
@@ -202,27 +202,26 @@ let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal opt
             prevStopLoss / 1M
             minStopLoss
         ]
+        |> round2
         |> Some
 
-    match previousStopLossValue with
+    match previousStopLossValue with 
+    | None when gain <> 0M && gain >= stopLossTriggerLevel ->
+        let newStopLoss = decimal position.Leverage * (gain - (stopLossFactor / gain))
+        let sl = stopLossOfAtleast minStopLoss newStopLoss
+        sl
+
+    | Some v when gain <> 0M && gain >= stopLossTriggerLevel ->
+        let newStopLoss = decimal position.Leverage * (gain - (stopLossFactor / gain))
+        let sl = stopLossOfAtleast v newStopLoss
+        sl
+
     | None ->
-        Some minStopLoss // always start with the minstoploss    
-
-    | Some v when gain >= trailingTakeProfitLevel ->
-        let newStopLoss = gain - trailingDistance
-        let sl = stopLossOfAtleast v newStopLoss
-        sl
-
-    | Some v when gain >= breakEvenTrigger ->
-        //let slippageAllowance = Strategies.Common.tracePriceSlippageAllowance
-        //let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
-        //let expectedCostsForTradeCycle = (slippageAllowance + (tradeFeesPercent * decimal position.Leverage)) * 2M
-        let newStopLoss = 0.06M * decimal position.Leverage //expectedCostsForTradeCycle // we need to recover costs to breakEven
-        let sl = stopLossOfAtleast v newStopLoss
-        sl
+        Some minStopLoss // start with the minstoploss
 
     | v -> v // no change in stop loss
 
+/// Calculates net PNL _after_ fees considering leverage.
 let private calculatePnl (position: PositionAnalysis) (price: OrderBookTickerInfo) =
     let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
     let qty = decimal <| Math.Abs(position.PositionAmount)
