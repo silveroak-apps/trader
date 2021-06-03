@@ -249,6 +249,7 @@ let private calculatePnl (position: PositionAnalysis) (price: OrderBookTickerInf
     pnl, pnlPercent
 
 let private isStopLossHit (position: PositionAnalysis) =
+    Log.Debug("STOP LOSS PNL % {StopLossPNL}, CALC PNL Percent {CalcPNL}", position.StoplossPnlPercentValue, position.CalculatedPnlPercent )  
     match position.StoplossPnlPercentValue, position.CalculatedPnlPercent with
     | Some stoploss, Some gain when gain <= stoploss -> true 
     | _ -> false
