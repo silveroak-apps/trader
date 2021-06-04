@@ -193,25 +193,25 @@ type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
                 -5.00m;
                 -5.00m;
                 -5.00m;
-                -1.48m;
-                -1.27m;
-                -1.09m;
-                -0.92m;
-                -0.49m;
+                -0.65m;
+                -0.50m;
                 -0.37m;
                 -0.25m;
-                -0.04m;
+                 0.07m;
+                 0.16m;
                  0.25m;
-                 0.67m;
-                 0.89m;
-                 1.38m;
-                 2.00m;
-                 3.42m;
-                 4.75m;
-                 6.05m;
-                 7.33m;
-                 8.61m;
-                 9.88m;
+                 0.42m;
+                 0.65m;
+                 1.00m;
+                 1.20m;
+                 1.62m;
+                 2.20m;
+                 3.55m;
+                 4.85m;
+                 6.13m;
+                 7.40m;
+                 8.66m;
+                 9.92m;
             ]
 
         runTest leverage gainValuesWithLeverage previousSLValuesWithLeverage expectedSLValues
@@ -256,25 +256,25 @@ type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
                 -5.00m;
                 -5.00m;
                 -5.00m;
-                -1.48m;
-                -1.27m;
-                -1.09m;
-                -0.92m;
-                -0.49m;
+                -0.65m;
+                -0.50m;
                 -0.37m;
                 -0.25m;
-                -0.04m;
+                 0.07m;
+                 0.16m;
                  0.25m;
-                 0.67m;
-                 0.89m;
-                 1.38m;
-                 2.00m;
-                 3.42m;
-                 4.75m;
-                 6.05m;
-                 7.33m;
-                 8.61m;
-                 9.88m;
+                 0.42m;
+                 0.65m;
+                 1.00m;
+                 1.20m;
+                 1.62m;
+                 2.20m;
+                 3.55m;
+                 4.85m;
+                 6.13m;
+                 7.40m;
+                 8.66m;
+                 9.92m;
             ]
 
         runTest leverage gainValuesWithLeverage previousSLValuesWithLeverage expectedSLValues
