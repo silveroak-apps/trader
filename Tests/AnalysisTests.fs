@@ -70,58 +70,212 @@ let ``Heiken Ashi is calculated correctly`` () =
 
 type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
 
-    [<Fact>]
-    member __.``Stoploss is calculated correctly`` () =
-        let gainValues = 
-            None :: ([ -0.5m; 0m; 0.11m; 0.20m; 0.25m; 0.33m; 0.50m; 0.75m; 1.0m; 1.25m; 1.5m; 1.75m; 2.0m ] |> List.map Some)
-            |> List.pairwise
+    let mkPosition leverage prevPnlPercent prevSLPercent : Strategies.FuturesPositionAnalyser.PositionAnalysis =
+        // most values don't matter for this test
+        {
+            Strategies.FuturesPositionAnalyser.PositionAnalysis.IsolatedMargin = 0M
+            EntryPrice = 0M
+            Symbol = Symbol "does not matter"
+            Leverage = leverage
+            LiquidationPrice = 0M
+            MarginType = Types.FuturesMarginType.ISOLATED 
+            PositionSide = PositionSide.LONG
+            PositionAmount = 0M
+            MarkPrice = 0M
+            RealisedPnl = None
+            UnrealisedPnl = 0M
+            CalculatedPnl = None 
+            CalculatedPnlPercent = prevPnlPercent
+            StoplossPnlPercentValue = prevSLPercent
+            IsStoppedOut = false
+            CloseRaisedTime = None
+        }
 
-        // test data matches story 127 as of 3/Jun/2021 (this commit)
-        let leverage = 5m // 5x        
-        let expectedSLValues =
-            [
-                -1.0000m;
-                -1.0000m;
-                -0.3445m;
-                -0.0500m;
-                 0.0500m;
-                 0.1785m;
-                 0.4000m;
-                 0.6833m;
-                 0.9500m;
-                 1.2100m;
-                 1.4667m;
-                 1.7214m;
-                 1.9750m;
-            ] |> List.map (fun sl -> Math.Round(sl * leverage, 2))
-
-        let mkPosition leverage prevPnlPercent prevSLPercent : Strategies.FuturesPositionAnalyser.PositionAnalysis =
-            // most values don't matter for this test
-            {
-                Strategies.FuturesPositionAnalyser.PositionAnalysis.IsolatedMargin = 0M
-                EntryPrice = 0M
-                Symbol = Symbol "does not matter"
-                Leverage = leverage
-                LiquidationPrice = 0M
-                MarginType = Types.FuturesMarginType.ISOLATED 
-                PositionSide = PositionSide.LONG
-                PositionAmount = 0M
-                MarkPrice = 0M
-                RealisedPnl = None
-                UnrealisedPnl = 0M
-                CalculatedPnl = None 
-                CalculatedPnlPercent = prevPnlPercent
-                StoplossPnlPercentValue = prevSLPercent
-                IsStoppedOut = false
-                CloseRaisedTime = None
-            }
-
-        List.zip gainValues expectedSLValues
-        |> List.iter (fun ((previousGain, gain), expectedSL) ->
-            let previousSL = None
+    let runTest leverage gainValuesWithLeverage previousSLValuesWithLeverage expectedSLValues = 
+        List.zip3 gainValuesWithLeverage previousSLValuesWithLeverage expectedSLValues
+        |> List.iter (fun ((previousGain, gain), previousSL, expectedSL) ->
             let position = mkPosition leverage previousGain previousSL
             let newSL = Strategies.FuturesPositionAnalyser.calculateStopLoss position gain
             let actualSL = newSL |> Option.defaultValue Decimal.MinValue
             output.WriteLine (sprintf "Testing with prevGain: %A, gain: %A, prevSL: %A, expectedSL: %A. actual SL: %A" previousGain gain previousSL expectedSL actualSL)
             actualSL |> should equal expectedSL
         )
+
+    [<Theory(DisplayName = "no prevGain or prevSL ")>]
+    [<InlineData( 0)>] // gain 0
+    [<InlineData(-1)>] // -ve gain below SL trigger level (currently 0.11 * leverage)
+    [<InlineData(0.549)>] // +ve gain below SL trigger level (currently 0.11 * leverage)
+    member __.``calculateStopLoss returns minStopLoss`` (gainWithLeverage: float) =
+        let previousGain = None
+        let previousSL = None
+        let leverage = 5m
+        let position = mkPosition leverage previousGain previousSL
+
+        let expectedMinSL = Some <| FuturesPositionAnalyser.minStopLoss * leverage
+
+        let gainOpt = Some (decimal gainWithLeverage)
+        let newSL = Strategies.FuturesPositionAnalyser.calculateStopLoss position gainOpt
+        newSL |> should equal expectedMinSL
+
+    [<Theory>]
+    // prevSL, prevGain, gain 0
+    [<InlineData(0, 0   , 0   )>] 
+    [<InlineData(0, 0.56, 0.57)>]
+    [<InlineData(1, 2.5 , 3   )>]
+    [<InlineData(2, 3.5 , 4   )>]
+    [<InlineData(3, 4.5 , 5   )>]
+    member __.``calculateStopLoss always trails up`` (prevSLWithLeverage: float, prevGainWithLeverage: float, gainWithLeverage: float) =
+        let previousGain = Some <| decimal prevGainWithLeverage
+        let previousSL = Some <| decimal  prevSLWithLeverage
+        let leverage = 5m
+        let position = mkPosition leverage previousGain previousSL
+
+        let gainOpt = Some (decimal gainWithLeverage)
+        let newSL = Strategies.FuturesPositionAnalyser.calculateStopLoss position gainOpt
+        newSL.Value |> should greaterThanOrEqualTo previousSL.Value
+
+    [<Theory>]
+    [<InlineData( 0,  0    )>] // gain = 0 regardless of prev gain - shouldn't change SL
+    [<InlineData(-1,  0    )>] // gain = 0 regardless of prev gain - shouldn't change SL
+    [<InlineData( 1,  0    )>] // gain = 0 regardless of prev gain - shouldn't change SL
+    [<InlineData(-1,  0.549)>] // +ve gain < SL trigger
+    [<InlineData(-1, -0.549)>] // -ve gain < SL trigger
+    [<InlineData( 1,  0.9  )>] // gain > SL trigger, but < prev gain
+    member __.``calculateStopLoss doesnt change SL`` (prevGainWithLeverage: float, gainWithLeverage: float) =
+
+        let previousSL = Some 1.99m
+        let leverage = 5m
+        
+        let previousGain = Some <| decimal prevGainWithLeverage
+        let gain = Some <| decimal gainWithLeverage
+
+        let position = mkPosition leverage previousGain previousSL
+        let newSL = Strategies.FuturesPositionAnalyser.calculateStopLoss position gain
+        newSL |> should equal previousSL
+            
+    [<Fact>]
+    member __.``Stoploss is calculated correctly without a previous SL`` () =
+        let leverage = 5m // 5x 
+
+        let gainValuesWithLeverage = 
+            None :: ([
+                -0.50m;
+                 0.00m;
+                 0.11m;
+                 0.12m;
+                 0.13m;
+                 0.14m;
+                 0.15m;
+                 0.18m;
+                 0.19m;
+                 0.20m;
+                 0.22m;
+                 0.25m;
+                 0.30m;
+                 0.33m;
+                 0.40m;
+                 0.50m;
+                 0.75m;
+                 1.00m;
+                 1.25m;
+                 1.50m;
+                 1.75m;
+                 2.00m;
+                 ] |> List.map (fun g -> g * leverage |> Some))
+            |> List.pairwise
+
+        let previousSLValuesWithLeverage =
+            (List.replicate 22 None)
+
+        // test data matches story 127 as of 04/Jun/2021 (this commit)
+        let expectedSLValues =
+            [
+                -5.00m;
+                -5.00m;
+                -5.00m;
+                -1.48m;
+                -1.27m;
+                -1.09m;
+                -0.92m;
+                -0.49m;
+                -0.37m;
+                -0.25m;
+                -0.04m;
+                 0.25m;
+                 0.67m;
+                 0.89m;
+                 1.38m;
+                 2.00m;
+                 3.42m;
+                 4.75m;
+                 6.05m;
+                 7.33m;
+                 8.61m;
+                 9.88m;
+            ]
+
+        runTest leverage gainValuesWithLeverage previousSLValuesWithLeverage expectedSLValues
+
+    [<Fact>]
+    member __.``Stoploss is calculated correctly with previous SL`` () =
+        let leverage = 5m // 5x 
+        
+        let gainValuesWithLeverage = 
+            None :: ([
+                -0.50m;
+                 0.00m;
+                 0.11m;
+                 0.12m;
+                 0.13m;
+                 0.14m;
+                 0.15m;
+                 0.18m;
+                 0.19m;
+                 0.20m;
+                 0.22m;
+                 0.25m;
+                 0.30m;
+                 0.33m;
+                 0.40m;
+                 0.50m;
+                 0.75m;
+                 1.00m;
+                 1.25m;
+                 1.50m;
+                 1.75m;
+                 2.00m;
+                 ] |> List.map (fun g -> g * leverage |> Some))
+            |> List.pairwise
+
+        let previousSLValuesWithLeverage =
+            List.replicate 22 (Some -5m)
+
+        // test data matches story 127 as of 04/Jun/2021 (this commit)
+        let expectedSLValues =
+            [
+                -5.00m;
+                -5.00m;
+                -5.00m;
+                -1.48m;
+                -1.27m;
+                -1.09m;
+                -0.92m;
+                -0.49m;
+                -0.37m;
+                -0.25m;
+                -0.04m;
+                 0.25m;
+                 0.67m;
+                 0.89m;
+                 1.38m;
+                 2.00m;
+                 3.42m;
+                 4.75m;
+                 6.05m;
+                 7.33m;
+                 8.61m;
+                 9.88m;
+            ]
+
+        runTest leverage gainValuesWithLeverage previousSLValuesWithLeverage expectedSLValues
+

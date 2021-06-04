@@ -175,25 +175,32 @@ let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
             positions.Remove key |> ignore
      }
 
-let calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal option) =
-    let minStopLoss = -1M * decimal position.Leverage // % - TODO move to config
-    // let previousGain = Option.defaultValue 0M position.CalculatedPnlPercent
-    let previousStopLossValue = position.StoplossPnlPercentValue
-    let gain = Option.defaultValue 0M gainOpt
+// input magic numbers for calculating stoploss from config: see story 127 // % - TODO move to config
+let minStopLoss = -1M
+let stopLossTriggerLevel = 0.11M
+let stopLossFactor = 0.05M
 
-    (*
-        With a leverage of 5x, we get:
+let calculateStopLoss (position: PositionAnalysis) (currentGain: decimal option) =
 
-            minStopLoss = -5%
-            stopLossTriggerLevel = 4% (this is where we start trailing up)
-            trailingDistance is calculated dynamically based on gain (using stopLossFactor)
-    *)
+    // inputs to calc
+    let leverage = position.Leverage
+    let prevGain = position.CalculatedPnlPercent
+    let prevSL   = position.StoplossPnlPercentValue
 
-    let stopLossTriggerLevel = 0M * decimal position.Leverage // % - TODO move to config
-    let stopLossFactor = 0.05M // magic number: see story 127 // % - TODO move to config
+    let withoutLeverageUsingDefault0 opt =
+        opt
+        |> Option.map (fun v -> v / leverage)
+        |> Option.defaultValue 0M
 
-    let round2 (d: decimal) = Math.Round (d, 2)   
- 
+    // calculated non-leveraged inputs
+    let previousGainWithoutLeverage = prevGain |> withoutLeverageUsingDefault0  
+    let gainWithoutLeverage = currentGain |> withoutLeverageUsingDefault0
+    let previousSLWithoutLeverage = prevSL |> Option.map (fun v -> v / leverage)
+
+    let toLeveragedValue (d: decimal option) =
+        let round2 (d: decimal) = Math.Round (d, 2)   
+        d |> Option.map (fun sl -> (sl * leverage) |> round2)
+
     let stopLossOfAtleast prevStopLoss newStopLoss = 
         // by this time we've already got a stop loss.
         // we only ever change stoploss upward
@@ -202,24 +209,28 @@ let calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal option) =
             prevStopLoss / 1M
             minStopLoss
         ]
-        |> round2
         |> Some
 
-    match previousStopLossValue with 
-    | None when gain <> 0M && gain >= stopLossTriggerLevel ->
-        let newStopLoss = decimal position.Leverage * (gain - (stopLossFactor / gain))
-        let sl = stopLossOfAtleast minStopLoss newStopLoss
-        sl
+    let calcSL v = 
+        let newSL = gainWithoutLeverage - (stopLossFactor / gainWithoutLeverage)
+        stopLossOfAtleast v newSL
 
-    | Some v when gain <> 0M && gain >= stopLossTriggerLevel ->
-        let newStopLoss = decimal position.Leverage * (gain - (stopLossFactor / gain))
-        let sl = stopLossOfAtleast v newStopLoss
-        sl
+    match previousSLWithoutLeverage with 
+    | None when gainWithoutLeverage <> 0M &&
+                gainWithoutLeverage > stopLossTriggerLevel ->
+        calcSL minStopLoss
 
     | None ->
         Some minStopLoss // start with the minstoploss
 
+    | Some v when gainWithoutLeverage <> 0M && 
+                  gainWithoutLeverage > stopLossTriggerLevel && 
+                  gainWithoutLeverage > previousGainWithoutLeverage ->
+        calcSL v
+
     | v -> v // no change in stop loss
+
+    |> toLeveragedValue
 
 /// Calculates net PNL _after_ fees considering leverage.
 let private calculatePnl (position: PositionAnalysis) (price: OrderBookTickerInfo) =
