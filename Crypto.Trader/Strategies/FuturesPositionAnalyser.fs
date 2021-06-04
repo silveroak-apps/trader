@@ -190,7 +190,7 @@ let calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal option) =
     *)
 
     let stopLossTriggerLevel = 0M * decimal position.Leverage // % - TODO move to config
-    let stopLossFactor = 0.2M // magic number: see story 127 // % - TODO move to config
+    let stopLossFactor = 0.05M // magic number: see story 127 // % - TODO move to config
 
     let round2 (d: decimal) = Math.Round (d, 2)   
  

@@ -73,7 +73,7 @@ type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
     [<Fact>]
     member __.``Stoploss is calculated correctly`` () =
         let gainValues = 
-            None :: ([ -0.5m; 0m; 0.25m; 0.33m; 0.50m; 0.75m; 1.0m; 1.25m; 1.5m; 1.75m; 2.0m ] |> List.map Some)
+            None :: ([ -0.5m; 0m; 0.11m; 0.20m; 0.25m; 0.33m; 0.50m; 0.75m; 1.0m; 1.25m; 1.5m; 1.75m; 2.0m ] |> List.map Some)
             |> List.pairwise
 
         // test data matches story 127 as of 3/Jun/2021 (this commit)
@@ -82,15 +82,17 @@ type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
             [
                 -1.0000m;
                 -1.0000m;
-                -0.5500m;
-                -0.2761m;
-                 0.1000m;
-                 0.4833m;
-                 0.8000m;
-                 1.0900m;
-                 1.3667m;
-                 1.6357m;
-                 1.9000m;
+                -0.3445m;
+                -0.0500m;
+                 0.0500m;
+                 0.1785m;
+                 0.4000m;
+                 0.6833m;
+                 0.9500m;
+                 1.2100m;
+                 1.4667m;
+                 1.7214m;
+                 1.9750m;
             ] |> List.map (fun sl -> Math.Round(sl * leverage, 2))
 
         let mkPosition leverage prevPnlPercent prevSLPercent : Strategies.FuturesPositionAnalyser.PositionAnalysis =
