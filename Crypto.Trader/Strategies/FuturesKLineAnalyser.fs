@@ -176,7 +176,7 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: Analysis.HeikenA
                     decreasingLowPrice previousClosedCandle latestClosedCandle &&
                     decreasingLowPrice previousMinusOneClosedCandle previousClosedCandle
 
-                twoPreviousFTCandles && twoDecreasingCloses && twoDecreasingLows
+                threePreviousFTCandles && twoDecreasingCloses && twoDecreasingLows
 
             Log.Debug ("Analysing HA candles for {Exchange}:{Symbol}. Open: {OpenTime}, Interval: {IntervalMinutes}. " + 
                 "FB Low-Open: {FBDiff} {FB}, FT High-Open: {FTDiff} {FT}, " +
