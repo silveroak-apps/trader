@@ -3,6 +3,7 @@ module Bybit.Futures.Trade
 open Types
 open Bybit.Futures.Common
 open Exchanges.Common
+open System
 
 let private cfg = appConfig.GetSection "ByBit"
 
@@ -30,10 +31,16 @@ let private orderSideFrom (os: OrderSide) =
     | SELL -> "Sell"
     | s -> failwith <| sprintf "Invalid order side: %A" s
 
+let private getAPISign secret= 
+    
+
 let private getBybitClientCfg () =
     let apiKey = getApiKeyCfg () 
     let config = BybitConfig.Default
     config.AddApiKey (apiKey.Key, apiKey.Secret)
+    config.AddApiKeyPrefix ("api_key", "")
+    config.AddApiKeyPrefix ("sign", "")
+    config.AddApiKeyPrefix ("timestamp", "")
     config
         
 let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
@@ -43,6 +50,7 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
         let (Symbol symbol) = o.Symbol
 
         let config = getBybitClientCfg ()
+            
 
         let timeInForce = "GoodTillCancel"
         let responseTask =
@@ -77,7 +85,28 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
         printfn "response:\n%A" orderResponse
         return (Result.Error(OrderError "NOT IMPLEMENTED YET"))
     }
+    
+// let private queryOrderStatus (o: OrderQueryInfo) =
+//     let (Symbol symbol) = o.Symbol
+//     let config = getBybitClientCfg ()
+//     let client = BybitCoinMApi(config)
+ 
+//     let (OrderId sOrderId) = o.OrderId
 
+//     let parsed, orderId = Int64.TryParse sOrderId
+//     if not parsed then raise <| exn (sprintf "Invalid orderId. Expecting an integer. Found: %s" sOrderId)
+//     async {
+//         let! orderResponse = client.OrderGetOrdersAsync (symbol, orderId) |> Async.AwaitTask
+//         if orderResponse.Success
+//         then 
+//             let order = orderResponse.Data
+//             return mapOrderStatus {| 
+//                                     Status = order.Status
+//                                     ExecutedQuantity = order.ExecutedQuantity
+//                                     AvgPrice = order.AvgPrice |}
+//         else
+//             return OrderQueryFailed (sprintf "%A: %s" orderResponse.Error.Code orderResponse.Error.Message)
+//     }   
 let getExchange () =
     { new IFuturesExchange with
         member __.Id = Types.ExchangeId Common.ExchangeId
