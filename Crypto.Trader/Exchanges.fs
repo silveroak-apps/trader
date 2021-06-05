@@ -40,13 +40,13 @@ let coinMSymbols =
         ("BNBUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
         // ("BTCUSD_PERP", { Multiplier = 100 }) // 1 cont = 100 USD
         //("BTCUSD", { Multiplier = 100 }) // 1 cont = 100 USD
-        // ("ETHUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
+        ("ETHUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
         // ("ADAUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
         // ("DOTUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
     ]
 
 let allSymbols =
     usdtSymbols.Keys 
-    //|> Seq.append coinMSymbols.Keys
+    |> Seq.append coinMSymbols.Keys
     |> Seq.map Symbol
     |> Seq.toList
