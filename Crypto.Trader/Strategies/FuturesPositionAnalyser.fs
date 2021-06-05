@@ -190,8 +190,8 @@ let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal opt
             expectedCostsForTradeCycle (breakEvenStopLoss) = 1.1%
     *)
 
-    let trailingTakeProfitLevel = 0.20M * decimal position.Leverage // % - TODO move to config
-    let trailingDistance = 0.08M * decimal position.Leverage // % - TODO move to config
+    let trailingTakeProfitLevel = 0.5M * decimal position.Leverage // % - TODO move to config
+    let trailingDistance = 0.16M * decimal position.Leverage // % - TODO move to config
 
     let breakEvenTrigger = 0.18M * decimal position.Leverage // % - TODO move to config
     let stopLossOfAtleast prevStopLoss newStopLoss = 
@@ -217,7 +217,7 @@ let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal opt
     //     let slippageAllowance = Strategies.Common.tracePriceSlippageAllowance
     //     let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
     //     let expectedCostsForTradeCycle = (slippageAllowance + (tradeFeesPercent * decimal position.Leverage)) * 2M
-         let newStopLoss = 0.04M //expectedCostsForTradeCycle // we need to recover costs to breakEven
+         let newStopLoss = 0.04M * decimal position.Leverage //expectedCostsForTradeCycle // we need to recover costs to breakEven
          let sl = stopLossOfAtleast v newStopLoss
          sl
 
