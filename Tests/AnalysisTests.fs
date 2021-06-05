@@ -190,9 +190,9 @@ type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
         // test data matches story 127 as of 04/Jun/2021 (this commit)
         let expectedSLValues =
             [
-                -5.00m;
-                -5.00m;
-                -5.00m;
+                -3.00m;
+                -3.00m;
+                -3.00m;
                 -0.65m;
                 -0.50m;
                 -0.37m;
@@ -248,14 +248,14 @@ type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
             |> List.pairwise
 
         let previousSLValuesWithLeverage =
-            List.replicate 22 (Some -5m)
+            List.replicate 22 (Some -3m)
 
         // test data matches story 127 as of 04/Jun/2021 (this commit)
         let expectedSLValues =
             [
-                -5.00m;
-                -5.00m;
-                -5.00m;
+                -3.00m;
+                -3.00m;
+                -3.00m;
                 -0.65m;
                 -0.50m;
                 -0.37m;
