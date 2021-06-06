@@ -22,22 +22,32 @@ type BybitUSDTApi = IO.Swagger.Api.LinearOrderApi
 
 type BybitConfig = IO.Swagger.Client.Configuration
 type BybitOrderResponse = IO.Swagger.Model.OrderResBase
+type ByBitOrderResponseResult = IO.Swagger.Model.OrderRes
+type ByBitMarketApi = IO.Swagger.Api.MarketApi
+type ByBitOBResponse = IO.Swagger.Model.OrderBookBase
+type ByBitOBResultResponse = IO.Swagger.Model.OderBookRes
 
 let ExchangeId = 5L
 
-let createSignature (secret: string) (message: string) =
+// let createSignature (secret: string) (parameters: (string * string) list) =
 
-    let toBytes (s: string) = Encoding.UTF8.GetBytes s
+//     let toBytes (s: string) = Encoding.UTF8.GetBytes s
 
-    let toString (bs: byte array) = 
-        let hex = new StringBuilder(2 * Array.length bs)
-        bs
-        |> Array.iter (fun b -> hex.AppendFormat("{0:x2}", b) |> ignore)
-        hex.ToString()
+//     let paramBytes =
+//         parameters
+//         |> List.map (fun (n,v) -> sprintf "%s=%s" n v)
+//         |> List.fold (fun s item -> if s = "" then item else sprintf "%s&%s" s item) ""
+//         |> toBytes
 
-    let hmacsha256 (keyBytes: byte array) (messageBytes: byte array) =
-        use hash = new HMACSHA256 (keyBytes)
-        hash.ComputeHash messageBytes
+//     let toString (bs: byte array) = 
+//         let hex = new StringBuilder(2 * Array.length bs)
+//         bs
+//         |> Array.iter (fun b -> hex.AppendFormat("{0:x2}", b) |> ignore)
+//         hex.ToString()
 
-    hmacsha256 (toBytes secret) (toBytes message)
-    |> toString
+//     let hmacsha256 (keyBytes: byte array) (messageBytes: byte array) =
+//         use hash = new HMACSHA256 (keyBytes)
+//         hash.ComputeHash messageBytes
+
+//     hmacsha256 (toBytes secret) paramBytes
+//     |> toString

@@ -83,6 +83,7 @@ type OrderInputInfo = {
     Symbol: Symbol
     PositionSide: Types.PositionSide
     OrderType: OrderType
+    SignalCommandId: int64
 }
 
 type OrderQueryInfo = {
@@ -173,7 +174,7 @@ type IExchange =
     abstract member PlaceOrder : OrderInputInfo -> Async<Result<OrderInfo, OrderError>>
     abstract member QueryOrder : OrderQueryInfo -> Async<OrderStatus>
     abstract member CancelOrder : OrderQueryInfo -> Async<Result<bool, string>>
-    abstract member GetOrderBookCurrentPrice : string -> Async<Result<OrderBookTickerInfo, string>>
+    abstract member GetOrderBookCurrentPrice : Symbol -> Async<Result<OrderBookTickerInfo, string>>
     abstract member Name: string
     abstract member Id: ExchangeId
 

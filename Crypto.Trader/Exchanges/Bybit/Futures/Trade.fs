@@ -11,15 +11,6 @@ let getApiKeyCfg () =
     { ApiKey.Key = cfg.Item "FuturesKey"
       Secret = cfg.Item "FuturesSecret" }
 
-// let o =
-//     { OrderSide = Types.OrderSide.BUY
-//       OrderType = Types.OrderType.LIMIT
-//       PositionSide = Types.PositionSide.LONG
-//       Price = 100M<price>
-//       Quantity = 1M<qty>
-//       SignalId = 1212L
-//       Symbol = Symbol "BTCUSD" }
-
 let private orderTypeFrom (ot: OrderType) =
     match ot with
     | LIMIT -> "limit"
@@ -30,29 +21,55 @@ let private orderSideFrom (os: OrderSide) =
     | BUY -> "Buy"
     | SELL -> "Sell"
     | s -> failwith <| sprintf "Invalid order side: %A" s
-
-let private getAPISign secret= 
-    
-
-let private getBybitClientCfg () =
+ 
+let config = 
     let apiKey = getApiKeyCfg () 
     let config = BybitConfig.Default
-    config.AddApiKey (apiKey.Key, apiKey.Secret)
-    config.AddApiKeyPrefix ("api_key", "")
-    config.AddApiKeyPrefix ("sign", "")
-    config.AddApiKeyPrefix ("timestamp", "")
+    config.AddApiKey ("api_key", apiKey.Key)
+    config.AddApiKey ("api_secret", apiKey.Secret)
     config
+    
+let mapOrderStatus 
+    (order: {| 
+                Status: string
+                ExecutedQuantity: decimal
+                AvgPrice: decimal
+            |}
+    ) =
+    match order.Status with
+    | "Created"         -> OrderNew
+    | "Cancelled"       -> OrderCancelled (Qty order.ExecutedQuantity, Price order.AvgPrice)
+    | "Filled"          -> OrderFilled (Qty order.ExecutedQuantity, Price order.AvgPrice)
+    | "Triggered"       -> OrderPartiallyFilled(Qty order.ExecutedQuantity, Price order.AvgPrice)
+    | "Rejected"        -> OrderCancelled (Qty 0M, Price 0M)
+    | "Untriggered"     -> OrderCancelled (Qty 0M, Price 0M)
+    | status            -> OrderQueryFailed (sprintf "Unrecognised order status: %A" status)
+
+let private toOrderInfoResult (orderData: ByBitOrderResponseResult) =
+    {
+        OrderInfo.OrderId = OrderId orderData.OrderId
+        ClientOrderId = ClientOrderId orderData.OrderLinkId
+        ExecutedQuantity = Qty (decimal orderData.CumExecQty)
+        Time = orderData.LastExecTime.GetValueOrDefault() 
+                |> int64 
+                |> DateTimeOffset.FromUnixTimeSeconds
+
+        Quantity = Qty (decimal orderData.Qty)
+        Price = orderData.Price.GetValueOrDefault() |> decimal |> Price
+       
+        Symbol = Symbol orderData.Symbol
+        Status = 
+            mapOrderStatus {| 
+                            Status = orderData.OrderStatus
+                            ExecutedQuantity = decimal orderData.CumExecQty
+                            AvgPrice = orderData.Price.GetValueOrDefault() |> decimal |} //TODO: Need to check for price or Last executed price
+    } |> Ok    
         
 let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
 
     async {
-        
         let (Symbol symbol) = o.Symbol
-
-        let config = getBybitClientCfg ()
-            
-
-        let timeInForce = "GoodTillCancel"
+        let timeInForce = "PostOnly" // For maker fees
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
@@ -64,7 +81,7 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
                     o.Quantity / 1M<qty>,
                     timeInForce,
                     price = float (o.Price / 1M<price>),
-                    orderLinkId = string o.SignalId
+                    orderLinkId = string o.SignalCommandId
                 )
             | USDT ->
                 let client = BybitUSDTApi(config)
@@ -75,49 +92,124 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
                     timeInForce,
                     float <| (o.Quantity / 1M<qty>),
                     float (o.Price / 1M<price>),
-                    orderLinkId = string o.SignalId
+                    orderLinkId = string o.SignalCommandId
                 )
 
         let! response = responseTask |> Async.AwaitTask
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
 
-        let orderResponse = jobj.ToObject<BybitOrderResponse>() // TODO do both COINM/USDT return the same type?
-        printfn "response:\n%A" orderResponse
-        return (Result.Error(OrderError "NOT IMPLEMENTED YET"))
+        let orderResponse = jobj.ToObject<BybitOrderResponse>()
+        printfn "response:\n%A" orderResponse //TODO: For debug, remove it later.. 
+
+        let result = 
+            if orderResponse.RetCode = Nullable 0M
+            then 
+                let result      = orderResponse.Result :?> ByBitOrderResponseResult
+                toOrderInfoResult result
+            else 
+                Error(OrderError(sprintf "%A: %s" orderResponse.RetCode orderResponse.RetMsg))
+        return result        
     }
     
-// let private queryOrderStatus (o: OrderQueryInfo) =
-//     let (Symbol symbol) = o.Symbol
-//     let config = getBybitClientCfg ()
-//     let client = BybitCoinMApi(config)
- 
-//     let (OrderId sOrderId) = o.OrderId
+let private queryOrderStatus (o: OrderQueryInfo) =
+    
+    let (Symbol symbol) = o.Symbol
+    let (OrderId sOrderId) = o.OrderId
 
-//     let parsed, orderId = Int64.TryParse sOrderId
-//     if not parsed then raise <| exn (sprintf "Invalid orderId. Expecting an integer. Found: %s" sOrderId)
-//     async {
-//         let! orderResponse = client.OrderGetOrdersAsync (symbol, orderId) |> Async.AwaitTask
-//         if orderResponse.Success
-//         then 
-//             let order = orderResponse.Data
-//             return mapOrderStatus {| 
-//                                     Status = order.Status
-//                                     ExecutedQuantity = order.ExecutedQuantity
-//                                     AvgPrice = order.AvgPrice |}
-//         else
-//             return OrderQueryFailed (sprintf "%A: %s" orderResponse.Error.Code orderResponse.Error.Message)
-//     }   
+    async {
+        let responseTask =
+            match getFuturesMode o.Symbol with
+            | COINM -> 
+                let client = BybitCoinMApi(config)
+                client.OrderQueryAsync (symbol, sOrderId)
+            | USDT -> 
+                let client = BybitUSDTApi(config)
+                client.LinearOrderQueryAsync (symbol, sOrderId) 
+
+        let! response = responseTask |> Async.AwaitTask
+        let jobj = response :?> Newtonsoft.Json.Linq.JObject
+        let orderResponse = jobj.ToObject<BybitOrderResponse>()
+        if Nullable.Equals(orderResponse.RetCode, 0M)
+        then 
+            let responseResult      = orderResponse.Result :?> ByBitOrderResponseResult
+            return mapOrderStatus {| 
+                                    Status = responseResult.OrderStatus
+                                    ExecutedQuantity = decimal responseResult.CumExecQty
+                                    AvgPrice = responseResult.LastExecPrice.GetValueOrDefault() |> decimal |}
+        else
+            return OrderQueryFailed (sprintf "%A: %s" orderResponse.RetCode orderResponse.RetMsg)
+    } 
+    
+let private cancelOrder (o: OrderQueryInfo) =
+    let (Symbol symbol) = o.Symbol
+    let (OrderId sOrderId) = o.OrderId
+
+    async {
+        let responseTask =
+            match getFuturesMode o.Symbol with
+            | COINM -> 
+                let client = BybitCoinMApi(config)
+                client.OrderCancelAsync (symbol, sOrderId)
+            | USDT -> 
+                let client = BybitUSDTApi(config)
+                client.LinearOrderCancelAsync (symbol, sOrderId)
+                
+        let! cancelResponse = responseTask |> Async.AwaitTask
+        let orderResponse = cancelResponse :?> BybitOrderResponse
+        return 
+            if Nullable.Equals(orderResponse.RetCode, 0M)
+            then Ok true
+            else Error (sprintf "%A: %s" orderResponse.RetCode orderResponse.RetMsg)
+    }
+    
+let private getOrderBookCurrentPrice (Symbol s) =
+    let client = BybitMarketApi(config)
+    // ugly copy paste of a large section of code - because the library we use doesn't unify the types that pull OrderBook for
+    // COIN-M vs USDT futures
+    // and I didn't bother to write an abstraction over it.
+    async {
+        let! response = client.MarketOrderbookAsync (s) |> Async.AwaitTask
+        let jobj = response :?> Newtonsoft.Json.Linq.JObject
+        let bookResponse = jobj.ToObject<ByBitOBResponse>()
+        if not (Nullable.Equals(bookResponse.RetCode, 0M))
+        then 
+            return Result.Error (sprintf "Error getting orderbook: %A: %s" bookResponse.RetCode bookResponse.RetMsg)
+        else
+            let bestBid = 
+                bookResponse.Result
+                |> Seq.filter (fun b -> b.Side = "Buy")
+                |> Seq.tryHead
+            let bestAsk = 
+                bookResponse.Result
+                |> Seq.filter (fun b -> b.Side = "Sell")
+                |> Seq.tryHead
+            return
+                Option.map2 (fun (b: ByBitOBResultResponse)  (a: ByBitOBResultResponse) -> 
+                                {
+                                    OrderBookTickerInfo.AskPrice = decimal a.Price
+                                    AskQty   = decimal a.Size
+                                    BidPrice = decimal b.Price
+                                    BidQty   = decimal b.Size
+                                    Symbol   = Symbol s
+                                }) bestBid bestAsk
+                |> (fun ob ->
+                        match ob with
+                        | Some v -> Result.Ok v
+                        | None -> Result.Error "No orderbook data found"
+                    ) 
+
+    }
+
 let getExchange () =
     { new IFuturesExchange with
         member __.Id = Types.ExchangeId Common.ExchangeId
         member __.Name = "BybitFutures"
 
-        member __.CancelOrder(o: OrderQueryInfo) : Async<Result<bool, string>> = failwith "Not Implemented"
+        member __.CancelOrder o = cancelOrder o
         member __.PlaceOrder o = placeOrder o
-        member __.QueryOrder(o: OrderQueryInfo) : Async<OrderStatus> = failwith "Not Implemented"
+        member __.QueryOrder o = queryOrderStatus o
 
-        member __.GetOrderBookCurrentPrice(o: string) : Async<Result<OrderBookTickerInfo, string>> =
-            failwith "Not Implemented"
+        member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice s
 
         member __.GetFuturesPositions(o: Symbol option) : Async<Result<seq<ExchangePosition>, string>> =
             failwith "Not Implemented"

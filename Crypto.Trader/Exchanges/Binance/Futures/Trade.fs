@@ -95,32 +95,6 @@ let private placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>
             if orderResponse.Success
             then toOrderInfoResult orderResponse.Data
             else 
-// TODO: We might need to handle some errors that can't be retried
-// and we need to indicate to the caller that they need to change the inputs
-(* for example:
--2018 BALANCE_NOT_SUFFICIENT
-    Balance is insufficient.
--2019 MARGIN_NOT_SUFFICIEN
-    Margin is insufficient.
--2020 UNABLE_TO_FILL
-    Unable to fill.
--2021 ORDER_WOULD_IMMEDIATELY_TRIGGER
-    Order would immediately trigger.
--2022 REDUCE_ONLY_REJECT
-    ReduceOnly Order is rejected.
--2023 USER_IN_LIQUIDATION
-    User in liquidation mode now.
--2024 POSITION_NOT_SUFFICIENT
-    Position is not sufficient.
--2025 MAX_OPEN_ORDER_EXCEEDED
-    Reach max open order limit.
--2026 REDUCE_ONLY_ORDER_TYPE_NOT_SUPPORTED
-    This OrderType is not supported when reduceOnly.
--2027 MAX_LEVERAGE_RATIO
-    Exceeded the maximum allowable position at current leverage.
--2028 MIN_LEVERAGE_RATIO
-    Leverage is smaller than permitted: insufficient margin balance.
-*) 
                 Error(OrderError(sprintf "%A: %s" orderResponse.Error.Code orderResponse.Error.Message))
         return result
     }
@@ -241,7 +215,7 @@ let getExchange() = {
         member __.PlaceOrder o = placeOrder o
         member __.QueryOrder o = queryOrderStatus o
         member __.CancelOrder o = cancelOrder o
-        member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice (Symbol s)
+        member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice s
         member __.Id = Types.ExchangeId ExchangeId
         member __.Name = "BinanceFutures"
 

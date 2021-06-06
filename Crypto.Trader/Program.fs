@@ -75,14 +75,15 @@ let main1 (argv: string[]) =
 
 [<EntryPoint>]
 let testMain _ =
-    let orderInput = {
-        Types.OrderInputInfo.OrderSide = Types.OrderSide.BUY
-        Types.OrderInputInfo.OrderType = Types.OrderType.LIMIT
-        Types.OrderInputInfo.PositionSide = Types.PositionSide.LONG
-        Types.OrderInputInfo.Price = 100M<price>
-        Types.OrderInputInfo.Quantity = 1M<qty>
-        Types.OrderInputInfo.SignalId = 1212L
-        Types.OrderInputInfo.Symbol = Symbol "BTCUSD"
+    let orderInput : Types.OrderInputInfo = {
+        OrderSide = Types.OrderSide.BUY
+        OrderType = Types.OrderType.LIMIT
+        PositionSide = Types.PositionSide.LONG
+        Price = 100M<price>
+        Quantity = 1M<qty>
+        SignalId = 1212L
+        Symbol = Symbol "BTCUSD"
+        SignalCommandId = 12323L
     }
     Bybit.Futures.Trade.placeOrder orderInput |> Async.RunSynchronously |> ignore
     0

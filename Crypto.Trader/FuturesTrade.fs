@@ -41,7 +41,7 @@ let private findOrderSide (positionSide: PositionSide) (signalAction: SignalActi
 
 let determineOrderPrice (exchange: IExchange) (s: FuturesSignalCommandView) (orderSide: OrderSide) = 
     asyncResult {
-        let! orderBook = exchange.GetOrderBookCurrentPrice s.Symbol
+        let! orderBook = exchange.GetOrderBookCurrentPrice (Symbol s.Symbol)
         // reduce potential loss due to spread
         let positionSide = PositionSide.FromString s.PositionType
         let result =
@@ -120,6 +120,7 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) maxSlippage =
                 Quantity = assetQty
                 PositionSide = PositionSide.FromString s.PositionType
                 OrderType = OrderType.LIMIT
+                SignalCommandId = s.Id
             }
 
             // TODO: Review this flow and see if we need to indicate that a 'rejected' order can't be simply retried
