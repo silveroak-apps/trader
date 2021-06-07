@@ -223,16 +223,16 @@ let calculateStopLoss (position: PositionAnalysis) (currentGain: decimal option)
     | None ->
         Some minStopLoss // start with the minstoploss
 
-    | Some v when gainWithoutLeverage <> 0M && gainWithoutLeverage <= 0.33M &&
+    | Some v when gainWithoutLeverage <> 0M && gainWithoutLeverage <= 0.5M &&
                   gainWithoutLeverage > stopLossTriggerLevel && 
                   gainWithoutLeverage > previousGainWithoutLeverage ->
         calcSL v
     
 
-    | Some when gainWithoutLeverage > 0.33M ->
-        let newStopLoss = gainWithoutLeverage - 0.16M
-        calcSL newStopLoss
-
+    | Some v when gainWithoutLeverage > 0.5M ->
+        let newStopLoss = gainWithoutLeverage - 0.2M
+        let sl =  stopLossOfAtleast v newStopLoss
+        sl
 
     | v -> v // no change in stop loss
 
