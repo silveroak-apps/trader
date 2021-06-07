@@ -13,8 +13,8 @@ let getApiKeyCfg () =
 
 let private orderTypeFrom (ot: OrderType) =
     match ot with
-    | LIMIT -> "limit"
-    | MARKET -> "market"
+    | LIMIT -> "Limit"
+    | MARKET -> "Market"
 
 let private orderSideFrom (os: OrderSide) =
     match os with
@@ -22,7 +22,7 @@ let private orderSideFrom (os: OrderSide) =
     | SELL -> "Sell"
     | s -> failwith <| sprintf "Invalid order side: %A" s
  
-let config = 
+let config  = 
     let apiKey = getApiKeyCfg () 
     let config = BybitConfig.Default
     config.AddApiKey ("api_key", apiKey.Key)
@@ -69,7 +69,7 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
 
     async {
         let (Symbol symbol) = o.Symbol
-        let timeInForce = "PostOnly" // For maker fees
+        let timeInForce = "GoodTillCancel" // For maker fees
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
@@ -85,6 +85,35 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
                 )
             | USDT ->
                 let client = BybitUSDTApi(config)
+                (*
+                    string side = "Buy";
+                    string symbol = "BTCUSDT";
+                    string orderType = "Limit";
+                    double? qty = 20;
+                    string timeInForce = "GoodTillCancel";
+                    double? price = 20;
+                    double? takeProfit = null;
+                    double? stopLoss = null;
+                    bool? reduceOnly = null;
+                    bool? closeOnTrigger = null;
+                    string orderLinkId = "abcd";
+                    string tpTriggerBy = null;
+                    string slTriggerBy = null;
+                    IO.Swagger.Api.LinearOrderApi.LinearOrderNewAsync(
+                        ?symbol: string,
+                        ?side: string,
+                        ?orderType: string,
+                        ?timeInForce: string,
+                        ?qty: Nullable<float>,
+                        ?price: Nullable<float>,
+                        ?takeProfit: Nullable<float>,
+                        ?stopLoss: Nullable<float>,
+                        ?reduceOnly: Nullable<bool>,
+                        ?tpTriggerBy: string,
+                        ?slTriggerBy: string,
+                        ?closeOnTrigger: Nullable<bool>,
+                        ?orderLinkId: string) : Threading.Tasks.Task<obj>
+                    *)
                 client.LinearOrderNewAsync(
                     symbol, 
                     orderSideFrom o.OrderSide,
@@ -92,26 +121,28 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
                     timeInForce,
                     float <| (o.Quantity / 1M<qty>),
                     float (o.Price / 1M<price>),
+                    reduceOnly = false, //TODO Need to update with position and order side Buy Short - true Sell Long true 
+                    closeOnTrigger = false,
                     orderLinkId = string o.SignalCommandId
                 )
-
+        
         let! response = responseTask |> Async.AwaitTask
+        
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
-
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
-        printfn "response:\n%A" orderResponse //TODO: For debug, remove it later.. 
-
+        printfn "response:\n%A" orderResponse //TODO: For debug, remove it later..
         let result = 
             if orderResponse.RetCode = Nullable 0M
             then 
-                let result      = orderResponse.Result :?> ByBitOrderResponseResult
-                toOrderInfoResult result
+                let jResultObj      = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
+                let orderResponse = jResultObj.ToObject<ByBitOrderResponseResult>()
+                toOrderInfoResult orderResponse
             else 
                 Error(OrderError(sprintf "%A: %s" orderResponse.RetCode orderResponse.RetMsg))
         return result        
     }
     
-let private queryOrderStatus (o: OrderQueryInfo) =
+let queryOrderStatus (o: OrderQueryInfo) =
     
     let (Symbol symbol) = o.Symbol
     let (OrderId sOrderId) = o.OrderId
@@ -129,18 +160,20 @@ let private queryOrderStatus (o: OrderQueryInfo) =
         let! response = responseTask |> Async.AwaitTask
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
+        printfn "query response:\n%A" orderResponse //TODO: For debug, remove it later..
         if Nullable.Equals(orderResponse.RetCode, 0M)
         then 
-            let responseResult      = orderResponse.Result :?> ByBitOrderResponseResult
+            let jResultObj      = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
+            let orderResponse = jResultObj.ToObject<ByBitOrderResponseResult>()
             return mapOrderStatus {| 
-                                    Status = responseResult.OrderStatus
-                                    ExecutedQuantity = decimal responseResult.CumExecQty
-                                    AvgPrice = responseResult.LastExecPrice.GetValueOrDefault() |> decimal |}
+                                    Status = orderResponse.OrderStatus
+                                    ExecutedQuantity = decimal orderResponse.CumExecQty
+                                    AvgPrice = orderResponse.LastExecPrice.GetValueOrDefault() |> decimal |}
         else
             return OrderQueryFailed (sprintf "%A: %s" orderResponse.RetCode orderResponse.RetMsg)
     } 
     
-let private cancelOrder (o: OrderQueryInfo) =
+let cancelOrder (o: OrderQueryInfo) =
     let (Symbol symbol) = o.Symbol
     let (OrderId sOrderId) = o.OrderId
 
@@ -149,20 +182,23 @@ let private cancelOrder (o: OrderQueryInfo) =
             match getFuturesMode o.Symbol with
             | COINM -> 
                 let client = BybitCoinMApi(config)
-                client.OrderCancelAsync (symbol, sOrderId)
+                client.OrderCancelAsync (symbol = symbol, orderId = sOrderId)
             | USDT -> 
                 let client = BybitUSDTApi(config)
-                client.LinearOrderCancelAsync (symbol, sOrderId)
+                client.LinearOrderCancelAsync (symbol = symbol, orderId = sOrderId)
                 
         let! cancelResponse = responseTask |> Async.AwaitTask
-        let orderResponse = cancelResponse :?> BybitOrderResponse
+        let jobj = cancelResponse :?> Newtonsoft.Json.Linq.JObject
+        let orderResponse = jobj.ToObject<BybitOrderResponse>()
+
+        printfn "cancel response:\n%A" orderResponse //TODO: For debug, remove it later..
         return 
             if Nullable.Equals(orderResponse.RetCode, 0M)
             then Ok true
             else Error (sprintf "%A: %s" orderResponse.RetCode orderResponse.RetMsg)
     }
     
-let private getOrderBookCurrentPrice (Symbol s) =
+let getOrderBookCurrentPrice (Symbol s) =
     let client = BybitMarketApi(config)
     // ugly copy paste of a large section of code - because the library we use doesn't unify the types that pull OrderBook for
     // COIN-M vs USDT futures
@@ -171,6 +207,7 @@ let private getOrderBookCurrentPrice (Symbol s) =
         let! response = client.MarketOrderbookAsync (s) |> Async.AwaitTask
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
         let bookResponse = jobj.ToObject<ByBitOBResponse>()
+        printfn "book response:\n%A" bookResponse //TODO: For debug, remove it later..
         if not (Nullable.Equals(bookResponse.RetCode, 0M))
         then 
             return Result.Error (sprintf "Error getting orderbook: %A: %s" bookResponse.RetCode bookResponse.RetMsg)
