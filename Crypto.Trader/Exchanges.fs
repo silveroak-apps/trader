@@ -37,7 +37,7 @@ let usdtSymbols  =
 
 let coinMSymbols =
     dict [ 
-        //("BNBUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
+        ("BNBUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
         // ("BTCUSD_PERP", { Multiplier = 100 }) // 1 cont = 100 USD
         //("BTCUSD", { Multiplier = 100 }) // 1 cont = 100 USD
         //("ETHUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
@@ -47,6 +47,6 @@ let coinMSymbols =
 
 let allSymbols =
     usdtSymbols.Keys 
-    |> Seq.append coinMSymbols.Keys
+    //|> Seq.append coinMSymbols.Keys
     |> Seq.map Symbol
     |> Seq.toList
