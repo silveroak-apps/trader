@@ -333,7 +333,7 @@ let private updatePositionPnl (exchange: IFuturesExchange) (price: OrderBookTick
                 |> Async.map (fun c ->
                         match c with
                         | Choice2Of2 ex -> 
-                            Log.Warning(ex, "Error trying to close position: {Error}", ex.Message)
+                            Log.Error(ex, "Error trying to close position: {Error}", ex.Message)
                             c
                         | _ -> c
                     )
