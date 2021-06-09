@@ -190,8 +190,8 @@ let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal opt
             expectedCostsForTradeCycle (breakEvenStopLoss) = 1.1%
     *)
 
-    let trailingTakeProfitLevel = 2M * decimal position.Leverage // % - TODO move to config
-    let trailingDistance = 0.8M * decimal position.Leverage // % - TODO move to config
+    let trailingTakeProfitLevel = 1.5M * decimal position.Leverage // % - TODO move to config
+    let trailingDistance = 0.7M * decimal position.Leverage // % - TODO move to config
 
     let breakEvenTrigger = 0.3M * decimal position.Leverage // % - TODO move to config
     let stopLossOfAtleast prevStopLoss newStopLoss = 
