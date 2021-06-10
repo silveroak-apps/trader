@@ -1,7 +1,11 @@
 module Bybit.Futures.Common
 
 open Exchanges.Common
+open Serilog
 
+open FSharp.Linq
+open Types
+open System
 (*
     Bybit InversePerpetual contracts are like Binance COIN-M margined perpetual contracts
     Bybit LinearPerpetual contracts are like Binance USDT/USD-M margined perpetual contracts
@@ -43,3 +47,39 @@ let config =
     config.AddApiKey ("api_key", apiKey.Key)
     config.AddApiKey ("api_secret", apiKey.Secret)
     config
+
+let private marketApiClient = BybitMarketApi(config)
+
+let getOrderBookCurrentPrice (Symbol s) : Async<Result<Types.OrderBookTickerInfo, string>> =
+    async {
+        let! o = marketApiClient.MarketOrderbookAsync(s) |> Async.AwaitTask
+        let jobj = o :?> Newtonsoft.Json.Linq.JObject
+        let obResponse = jobj.ToObject<IO.Swagger.Model.OrderBookBase>()
+        let result =
+            if obResponse.RetCode ?= 0M && 
+                obResponse.Result.Count > 0
+            then             
+                let buys = obResponse.Result |> Seq.filter(fun obItem -> obItem.Side = "Buy")
+                let sells = obResponse.Result |> Seq.filter(fun obItem -> obItem.Side = "Sell")
+
+                match Seq.length buys, Seq.length sells with
+                | 0, _ -> Result.Error (sprintf "No buy orders in Bybit orderbook for %s" s)
+                | _, 0 -> Result.Error (sprintf "No sell orders in Bybit orderbook for %s" s)
+                | _, _ -> 
+                    let bestBuy = buys |> Seq.maxBy (fun buy -> buy.Price)
+                    let bestSell = sells |> Seq.minBy (fun sell -> sell.Price)
+                    let (ticker: OrderBookTickerInfo) = 
+                        {
+                            AskPrice = Decimal.Parse bestSell.Price
+                            AskQty = bestSell.Size.GetValueOrDefault()
+                            BidPrice = Decimal.Parse bestBuy.Price
+                            BidQty = bestBuy.Size.GetValueOrDefault()
+                            Symbol = Symbol s
+                        }     
+                    Result.Ok ticker
+
+            elif obResponse.RetCode ?= 0M
+            then Result.Error (sprintf "Error getting orderbook from ByBit: '%s'" obResponse.RetMsg)
+            else Result.Error (sprintf "No results for Bybit orderbook API call")
+        return result
+    }

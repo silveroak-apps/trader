@@ -5,6 +5,9 @@ open Bybit.Futures.Common
 open Exchanges.Common
 open System
 open FsToolkit.ErrorHandling
+open FSharp.Linq
+
+open Serilog
 
 let private orderTypeFrom (ot: OrderType) =
     match ot with
@@ -57,7 +60,7 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
 
     async {
         let (Symbol symbol) = o.Symbol
-        let timeInForce = "GoodTillCancel" // For maker fees
+        let timeInForce = "PostOnly" // For maker fees
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
@@ -73,35 +76,7 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
                 )
             | USDT ->
                 let client = BybitUSDTApi(config)
-                (*
-                    string side = "Buy";
-                    string symbol = "BTCUSDT";
-                    string orderType = "Limit";
-                    double? qty = 20;
-                    string timeInForce = "GoodTillCancel";
-                    double? price = 20;
-                    double? takeProfit = null;
-                    double? stopLoss = null;
-                    bool? reduceOnly = null;
-                    bool? closeOnTrigger = null;
-                    string orderLinkId = "abcd";
-                    string tpTriggerBy = null;
-                    string slTriggerBy = null;
-                    IO.Swagger.Api.LinearOrderApi.LinearOrderNewAsync(
-                        ?symbol: string,
-                        ?side: string,
-                        ?orderType: string,
-                        ?timeInForce: string,
-                        ?qty: Nullable<float>,
-                        ?price: Nullable<float>,
-                        ?takeProfit: Nullable<float>,
-                        ?stopLoss: Nullable<float>,
-                        ?reduceOnly: Nullable<bool>,
-                        ?tpTriggerBy: string,
-                        ?slTriggerBy: string,
-                        ?closeOnTrigger: Nullable<bool>,
-                        ?orderLinkId: string) : Threading.Tasks.Task<obj>
-                    *)
+                    
                 client.LinearOrderNewAsync(
                     symbol, 
                     orderSideFrom o.OrderSide,
@@ -118,7 +93,7 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
         
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
-        printfn "response:\n%A" orderResponse //TODO: For debug, remove it later..
+        Log.Debug("response: {Response}", orderResponse)
         let result = 
             if orderResponse.RetCode = Nullable 0M
             then 
@@ -148,7 +123,7 @@ let queryOrderStatus (o: OrderQueryInfo) =
         let! response = responseTask |> Async.AwaitTask
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
-        printfn "query response:\n%A" orderResponse //TODO: For debug, remove it later..
+        Log.Debug("Bybit query response: {Response}", orderResponse)
         if Nullable.Equals(orderResponse.RetCode, 0M)
         then 
             let jResultObj      = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
@@ -179,51 +154,13 @@ let cancelOrder (o: OrderQueryInfo) =
         let jobj = cancelResponse :?> Newtonsoft.Json.Linq.JObject
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
 
-        printfn "cancel response:\n%A" orderResponse //TODO: For debug, remove it later..
+        Log.Debug("Bybit cancel order response: {Response}", orderResponse)
         return 
-            if Nullable.Equals(orderResponse.RetCode, 0M)
+            if orderResponse.RetCode ?= 0M
             then Ok true
             else Error (sprintf "%A: %s" orderResponse.RetCode orderResponse.RetMsg)
     }
     
-let getOrderBookCurrentPrice (Symbol s) =
-    let client = BybitMarketApi(config)
-    // ugly copy paste of a large section of code - because the library we use doesn't unify the types that pull OrderBook for
-    // COIN-M vs USDT futures
-    // and I didn't bother to write an abstraction over it.
-    async {
-        let! response = client.MarketOrderbookAsync (s) |> Async.AwaitTask
-        let jobj = response :?> Newtonsoft.Json.Linq.JObject
-        let bookResponse = jobj.ToObject<ByBitOBResponse>()
-        printfn "book response:\n%A" bookResponse //TODO: For debug, remove it later..
-        if not (Nullable.Equals(bookResponse.RetCode, 0M))
-        then 
-            return Result.Error (sprintf "Error getting orderbook: %A: %s" bookResponse.RetCode bookResponse.RetMsg)
-        else
-            let bestBid = 
-                bookResponse.Result
-                |> Seq.filter (fun b -> b.Side = "Buy")
-                |> Seq.tryHead
-            let bestAsk = 
-                bookResponse.Result
-                |> Seq.filter (fun b -> b.Side = "Sell")
-                |> Seq.tryHead
-            return
-                Option.map2 (fun (b: ByBitOBResultResponse)  (a: ByBitOBResultResponse) -> 
-                                {
-                                    OrderBookTickerInfo.AskPrice = decimal a.Price
-                                    AskQty   = decimal a.Size
-                                    BidPrice = decimal b.Price
-                                    BidQty   = decimal b.Size
-                                    Symbol   = Symbol s
-                                }) bestBid bestAsk
-                |> (fun ob ->
-                        match ob with
-                        | Some v -> Result.Ok v
-                        | None -> Result.Error "No orderbook data found"
-                    ) 
-
-    }
 
 let getExchange () =
     { new IFuturesExchange with
@@ -234,7 +171,7 @@ let getExchange () =
         member __.PlaceOrder o = placeOrder o
         member __.QueryOrder o = queryOrderStatus o
 
-        member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice s
+        member __.GetOrderBookCurrentPrice s = Bybit.Futures.Common.getOrderBookCurrentPrice s
 
         member __.GetFuturesPositions symbolFilter = PositionListener.getPositions symbolFilter
         member __.TrackPositions(agent, symbols) = PositionListener.trackPositions agent symbols 

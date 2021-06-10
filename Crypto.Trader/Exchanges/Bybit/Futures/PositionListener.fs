@@ -120,45 +120,9 @@ let getPositions (symbolFilter: Symbol option): Async<Result<seq<ExchangePositio
         return result
     }
 
-let private getLatestPrices (symbols: Symbol seq) =
-    let client = IO.Swagger.Api.MarketApi()
-    
-    let getPrice (Symbol s) =
-        async {
-            let! o = client.MarketOrderbookAsync(s) |> Async.AwaitTask
-            let jobj = o :?> Newtonsoft.Json.Linq.JObject
-            let obResponse = jobj.ToObject<IO.Swagger.Model.OrderBookBase>()
-            let result =
-                if obResponse.RetCode ?= 0M && 
-                    obResponse.Result.Count > 0
-                then
-                    
-                    let buys = obResponse.Result |> Seq.filter(fun obItem -> obItem.Side = "Buy")
-                    let sells = obResponse.Result |> Seq.filter(fun obItem -> obItem.Side = "Sell")
-
-                    match Seq.length buys, Seq.length sells with
-                    | 0, _ -> Result.Error (sprintf "No buy orders in Bybit orderbook for %s" s)
-                    | _, 0 -> Result.Error (sprintf "No sell orders in Bybit orderbook for %s" s)
-                    | _, _ -> 
-                        let bestBuy = buys |> Seq.maxBy (fun buy -> buy.Price)
-                        let bestSell = sells |> Seq.minBy (fun sell -> sell.Price)
-
-                        Result.Ok {
-                            OrderBookTickerInfo.AskPrice = Decimal.Parse bestSell.Price
-                            AskQty = bestSell.Size.GetValueOrDefault()
-                            BidPrice = Decimal.Parse bestBuy.Price
-                            BidQty = bestBuy.Size.GetValueOrDefault()
-                            Symbol = Symbol s
-                        }
-
-                elif obResponse.RetCode ?= 0M
-                then Result.Error (sprintf "Error getting prices from ByBit: '%s'" obResponse.RetMsg)
-                else Result.Error (sprintf "No results for Bybit orderbook API call")
-            return result
-        }
-
+let private getLatestPrices (symbols: Symbol seq) =    
     symbols
-    |> Seq.map getPrice
+    |> Seq.map Common.getOrderBookCurrentPrice
     |> Async.Parallel
 
 let trackPositions (agent: MailboxProcessor<PositionCommand>) (symbols: Symbol seq) =
