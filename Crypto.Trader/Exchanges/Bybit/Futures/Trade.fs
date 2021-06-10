@@ -4,12 +4,7 @@ open Types
 open Bybit.Futures.Common
 open Exchanges.Common
 open System
-
-let private cfg = appConfig.GetSection "ByBit"
-
-let getApiKeyCfg () =
-    { ApiKey.Key = cfg.Item "FuturesKey"
-      Secret = cfg.Item "FuturesSecret" }
+open FsToolkit.ErrorHandling
 
 let private orderTypeFrom (ot: OrderType) =
     match ot with
@@ -21,15 +16,8 @@ let private orderSideFrom (os: OrderSide) =
     | BUY -> "Buy"
     | SELL -> "Sell"
     | s -> failwith <| sprintf "Invalid order side: %A" s
- 
-let config = 
-    let apiKey = getApiKeyCfg () 
-    let config = BybitConfig.Default
-    config.AddApiKey ("api_key", apiKey.Key)
-    config.AddApiKey ("api_secret", apiKey.Secret)
-    config
     
-let mapOrderStatus 
+let private mapOrderStatus 
     (order: {| 
                 Status: string
                 ExecutedQuantity: decimal
@@ -211,8 +199,6 @@ let getExchange () =
 
         member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice s
 
-        member __.GetFuturesPositions(o: Symbol option) : Async<Result<seq<ExchangePosition>, string>> =
-            failwith "Not Implemented"
-
-        member __.TrackPositions(agent, symbols) =
-            PositionListener.trackPositions agent symbols }
+        member __.GetFuturesPositions symbolFilter = PositionListener.getPositions symbolFilter
+        member __.TrackPositions(agent, symbols) = PositionListener.trackPositions agent symbols 
+    }

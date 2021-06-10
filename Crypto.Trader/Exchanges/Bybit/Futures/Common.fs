@@ -1,7 +1,6 @@
 module Bybit.Futures.Common
 
-open System.Security.Cryptography
-open System.Text
+open Exchanges.Common
 
 (*
     Bybit InversePerpetual contracts are like Binance COIN-M margined perpetual contracts
@@ -20,6 +19,9 @@ type BybitMarketApi = IO.Swagger.Api.MarketApi
 type BybitCoinMApi = IO.Swagger.Api.OrderApi
 type BybitUSDTApi = IO.Swagger.Api.LinearOrderApi
 
+type BybitUSDTPositionsApi = IO.Swagger.Api.LinearPositionsApi
+type BybitCoinMPositionsApi = IO.Swagger.Api.PositionsApi
+
 type BybitConfig = IO.Swagger.Client.Configuration
 type BybitOrderResponse = IO.Swagger.Model.OrderResBase
 type ByBitOrderResponseResult = IO.Swagger.Model.OrderRes
@@ -29,25 +31,15 @@ type ByBitOBResultResponse = IO.Swagger.Model.OderBookRes
 
 let ExchangeId = 5L
 
-// let createSignature (secret: string) (parameters: (string * string) list) =
+let cfg = appConfig.GetSection "ByBit"
 
-//     let toBytes (s: string) = Encoding.UTF8.GetBytes s
+let getApiKeyCfg () =
+    { ApiKey.Key = cfg.Item "FuturesKey"
+      Secret = cfg.Item "FuturesSecret" }
 
-//     let paramBytes =
-//         parameters
-//         |> List.map (fun (n,v) -> sprintf "%s=%s" n v)
-//         |> List.fold (fun s item -> if s = "" then item else sprintf "%s&%s" s item) ""
-//         |> toBytes
-
-//     let toString (bs: byte array) = 
-//         let hex = new StringBuilder(2 * Array.length bs)
-//         bs
-//         |> Array.iter (fun b -> hex.AppendFormat("{0:x2}", b) |> ignore)
-//         hex.ToString()
-
-//     let hmacsha256 (keyBytes: byte array) (messageBytes: byte array) =
-//         use hash = new HMACSHA256 (keyBytes)
-//         hash.ComputeHash messageBytes
-
-//     hmacsha256 (toBytes secret) paramBytes
-//     |> toString
+let config = 
+    let apiKey = getApiKeyCfg () 
+    let config = BybitConfig.Default
+    config.AddApiKey ("api_key", apiKey.Key)
+    config.AddApiKey ("api_secret", apiKey.Secret)
+    config

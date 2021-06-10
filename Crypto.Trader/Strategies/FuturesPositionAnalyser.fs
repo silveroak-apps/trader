@@ -15,6 +15,7 @@ open Strategies.Common
 type PositionKey = PositionKey of string
 
 type private PositionAnalysis = {
+    ExchangeId: ExchangeId
     EntryPrice: decimal
     Symbol: Symbol
     IsolatedMargin: decimal
@@ -119,6 +120,7 @@ let private getPositionsFromExchange (exchange: IFuturesExchange) (symbol: Symbo
                         UnrealisedPnl = p.UnRealisedPnL
                         IsStoppedOut = false
                         CloseRaisedTime = None
+                        ExchangeId = exchange.Id
                         // EntryTime we don't actually know - unless we query orders and guess / calculate over time :|
                     })
             | Result.Error s ->
@@ -283,7 +285,7 @@ let private refreshPositions (exchange: IFuturesExchange seq) =
             Log.Information "Now cleaning up old stopped out positions"
             cleanUpStoppedPositions ()
 
-            // Log.Information ("We have {PositionCount} positions now.", positions.Count)
+            Log.Information ("We have {PositionCount} positions now.", positions |> Seq.length)
             printPositions positions
         })
     |> Async.Parallel
@@ -396,6 +398,9 @@ let trackPositions (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
     tradeAgent.Error.Add(raise)
 
     repeatEvery (TimeSpan.FromSeconds(3.0)) printPositionSummary "PositionSummaryPrinter" |> Async.Start
+
+    // required to ensure we get reasonably fresh data about positions
+    // 
     repeatEvery (TimeSpan.FromSeconds(15.0)) (fun () -> refreshPositions exchanges) "PositionRefresh" |> Async.Start
 
     exchanges
