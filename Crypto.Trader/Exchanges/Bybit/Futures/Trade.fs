@@ -70,7 +70,7 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
                     orderSideFrom o.OrderSide,
                     symbol,
                     orderTypeFrom o.OrderType,
-                    o.Quantity / 1M<qty>,
+                    o.Quantity / 1M<qty> |> int,
                     timeInForce,
                     price = float (o.Price / 1M<price>),
                     orderLinkId = orderLinkId
