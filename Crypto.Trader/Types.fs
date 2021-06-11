@@ -70,7 +70,7 @@ type FuturesMarginType =
 | UNKNOWN
 with 
     static member FromString (s: string) = 
-        match s.ToLower() with
+        match toLower s with
         | "isolated" -> ISOLATED
         | "cross"    -> CROSS
         | _          -> UNKNOWN
@@ -145,7 +145,7 @@ with
         | UNKNOWN -> "UNKNOWN"
     
     static member FromString (s: string) = 
-        match s.ToLower() with
+        match toLower s with
         | "open" -> OPEN
         | "close" -> CLOSE
         | "increase" -> INCREASE

@@ -69,7 +69,7 @@ let getUSDTPositionsFromBybitAPI (client: BybitUSDTPositionsApi) (symbolFilter: 
             | Some (Symbol s) -> client.LinearPositionsMyPositionAsync s
             | None            -> client.LinearPositionsMyPositionAsync ()
             |> Async.AwaitTask
-
+        
         let jobj = responseObj :?> Newtonsoft.Json.Linq.JObject
         let response = jobj.ToObject<BybitLinearPositionListResultBase>()
         if response.RetCode ?= 0M
@@ -92,10 +92,18 @@ let getCoinMPositionsFromBybitAPI (client: BybitCoinMPositionsApi) (symbolFilter
         let response = jobj.ToObject<BybitPositionListResultBase>()
         if response.RetCode ?= 0M
         then
-            return Ok (
-                response.Result :?> Newtonsoft.Json.Linq.JObject
-                |> (fun j -> j.ToObject<BybitPosition seq>()) 
-                |> Seq.map toExchangePosition')
+            let result = 
+                match symbolFilter with
+                | None -> 
+                    let jPositions = response.Result :?> Newtonsoft.Json.Linq.JArray
+                    jPositions.ToObject<BybitPosition seq>()
+                | _    -> 
+                    let jPos = response.Result :?> Newtonsoft.Json.Linq.JObject
+                    Seq.singleton (jPos.ToObject<BybitPosition>())
+                
+                |> Seq.map toExchangePosition'
+                |> Ok
+            return result
         else
             return Result.Error (sprintf "Error getting COINM positions from Bybit: [%A]%s" response.RetCode response.RetMsg)
     }

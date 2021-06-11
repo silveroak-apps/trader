@@ -29,6 +29,7 @@ let private mapOrderStatus
     ) =
     match order.Status with
     | "Created"         -> OrderNew
+    | "New"             -> OrderNew
     | "Cancelled"       -> OrderCancelled (Qty order.ExecutedQuantity, Price order.AvgPrice)
     | "Filled"          -> OrderFilled (Qty order.ExecutedQuantity, Price order.AvgPrice)
     | "Triggered"       -> OrderPartiallyFilled(Qty order.ExecutedQuantity, Price order.AvgPrice)
@@ -61,32 +62,36 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
     async {
         let (Symbol symbol) = o.Symbol
         let timeInForce = "PostOnly" // For maker fees
+        let orderLinkId = sprintf "%d_%d" o.SignalCommandId (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
-                let client = BybitCoinMApi(config)
-                client.OrderNewAsync(
+                coinMClient.OrderNewAsync(
                     orderSideFrom o.OrderSide,
                     symbol,
                     orderTypeFrom o.OrderType,
                     o.Quantity / 1M<qty>,
                     timeInForce,
                     price = float (o.Price / 1M<price>),
-                    orderLinkId = string o.SignalCommandId
+                    orderLinkId = orderLinkId
                 )
             | USDT ->
-                let client = BybitUSDTApi(config)
-                    
-                client.LinearOrderNewAsync(
+                let reduceOnly = 
+                    match o.PositionSide, o.OrderSide with
+                    | PositionSide.LONG, OrderSide.SELL     -> true
+                    | PositionSide.SHORT, OrderSide.BUY     -> true
+                    | _,_                                   -> false
+
+                usdtClient.LinearOrderNewAsync(
                     symbol, 
                     orderSideFrom o.OrderSide,
                     orderTypeFrom o.OrderType,
                     timeInForce,
                     float <| (o.Quantity / 1M<qty>),
                     float (o.Price / 1M<price>),
-                    reduceOnly = false, //TODO Need to update with position and order side Buy Short - true Sell Long true 
+                    reduceOnly = reduceOnly, 
                     closeOnTrigger = false,
-                    orderLinkId = string o.SignalCommandId
+                    orderLinkId = orderLinkId
                 )
         
         let! response = responseTask |> Async.AwaitTask
@@ -114,11 +119,9 @@ let queryOrderStatus (o: OrderQueryInfo) =
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
-                let client = BybitCoinMApi(config)
-                client.OrderQueryAsync (symbol, sOrderId)
+                coinMClient.OrderQueryAsync (symbol, sOrderId)
             | USDT -> 
-                let client = BybitUSDTApi(config)
-                client.LinearOrderQueryAsync (symbol, sOrderId) 
+                usdtClient.LinearOrderQueryAsync (symbol, sOrderId) 
 
         let! response = responseTask |> Async.AwaitTask
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
@@ -144,11 +147,9 @@ let cancelOrder (o: OrderQueryInfo) =
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
-                let client = BybitCoinMApi(config)
-                client.OrderCancelAsync (symbol = symbol, orderId = sOrderId)
+                coinMClient.OrderCancelAsync (symbol = symbol, orderId = sOrderId)
             | USDT -> 
-                let client = BybitUSDTApi(config)
-                client.LinearOrderCancelAsync (symbol = symbol, orderId = sOrderId)
+                usdtClient.LinearOrderCancelAsync (symbol = symbol, orderId = sOrderId)
                 
         let! cancelResponse = responseTask |> Async.AwaitTask
         let jobj = cancelResponse :?> Newtonsoft.Json.Linq.JObject

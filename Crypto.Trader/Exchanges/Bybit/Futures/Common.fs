@@ -45,9 +45,11 @@ let config =
     let apiKey = getApiKeyCfg () 
     let config = BybitConfig.Default
     config.AddApiKey ("api_key", apiKey.Key)
-    config.AddApiKey ("api_secret", apiKey.Secret)
+    config.ApiSecret <-  apiKey.Secret
     config
 
+let coinMClient = BybitCoinMApi(config)   
+let usdtClient = BybitUSDTApi(config) 
 let private marketApiClient = BybitMarketApi(config)
 
 let getOrderBookCurrentPrice (Symbol s) : Async<Result<Types.OrderBookTickerInfo, string>> =
