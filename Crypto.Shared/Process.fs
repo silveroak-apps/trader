@@ -40,7 +40,7 @@ let rec private retryForErrorResult<'TIn, 'TOut, 'TError> attempt maxCount (dela
         | _ -> return result
     }
 
-// TODO might be a good idea to look at Polly ?
+// TODOLATER might be a good idea to look at Polly ?
 let rec private retry'<'TIn, 'TOut> attempt maxCount (delay: TimeSpan option) (shouldRetry: exn -> bool) (p: 'TIn) (fn: 'TIn -> Async<'TOut>) =
     async {
         try

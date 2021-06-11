@@ -189,7 +189,7 @@ let private placeOrder getOrdersForSignal (saveOrder: ExchangeOrder -> Async<Res
                     | Error e -> return (Error e)
                     | Ok assetQty  -> 
 
-                        match! exchange.GetOrderBookCurrentPrice s.Symbol with
+                        match! exchange.GetOrderBookCurrentPrice (Symbol s.Symbol) with
                         | Error msg -> return (Error <| sprintf "Could not get latest orderbook price before placing order for %s: %s" s.Symbol msg)
                         | Ok price ->
                             // intentionally reduce potential loss due to spread
@@ -216,6 +216,7 @@ let private placeOrder getOrdersForSignal (saveOrder: ExchangeOrder -> Async<Res
                                 Quantity = assetQty
                                 PositionSide = NOT_APPLICABLE
                                 OrderType = OrderType.LIMIT
+                                SignalCommandId = 0L
                             }
 
                             // we're about to place an order: record it in the db, so we have the link between the order and signal saved

@@ -61,6 +61,7 @@
     <EmbeddedResource Include="Scripts\Script 0041 - Alter Market Event.sql"/>
     <EmbeddedResource Include="Scripts\Script 0042 - Alter SignalCommand ExchangeOrder relation.sql"/>
     <EmbeddedResource Include="Scripts\Script 0043 - Alter Market Event With Exchange.sql"/>
+    <EmbeddedResource Include="Scripts\Script 0044 - Insert exchange ByBit Futures.sql"/>
     <Content Include="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

@@ -4,7 +4,7 @@ module Trader.Exchanges
 let knownExchanges =
     [
         Binance.Futures.Trade.getExchange()
-        //Bybit.Futures.PositionListener.getExchange1()
+        Bybit.Futures.Trade.getExchange()
         // Simulator.Exchange.getExchange(Binance.Futures.Trade.getExchange()) // TODO refactor this to make it consistent with Binance
     ]
     |> Seq.map (fun exchange -> (exchange.Id, exchange))

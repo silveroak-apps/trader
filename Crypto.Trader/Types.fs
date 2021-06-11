@@ -70,7 +70,7 @@ type FuturesMarginType =
 | UNKNOWN
 with 
     static member FromString (s: string) = 
-        match s.ToLower() with
+        match toLower s with
         | "isolated" -> ISOLATED
         | "cross"    -> CROSS
         | _          -> UNKNOWN
@@ -83,6 +83,7 @@ type OrderInputInfo = {
     Symbol: Symbol
     PositionSide: Types.PositionSide
     OrderType: OrderType
+    SignalCommandId: int64
 }
 
 type OrderQueryInfo = {
@@ -144,7 +145,7 @@ with
         | UNKNOWN -> "UNKNOWN"
     
     static member FromString (s: string) = 
-        match s.ToLower() with
+        match toLower s with
         | "open" -> OPEN
         | "close" -> CLOSE
         | "increase" -> INCREASE
@@ -173,12 +174,12 @@ type IExchange =
     abstract member PlaceOrder : OrderInputInfo -> Async<Result<OrderInfo, OrderError>>
     abstract member QueryOrder : OrderQueryInfo -> Async<OrderStatus>
     abstract member CancelOrder : OrderQueryInfo -> Async<Result<bool, string>>
-    abstract member GetOrderBookCurrentPrice : string -> Async<Result<OrderBookTickerInfo, string>>
+    abstract member GetOrderBookCurrentPrice : Symbol -> Async<Result<OrderBookTickerInfo, string>>
     abstract member Name: string
     abstract member Id: ExchangeId
 
 type IFuturesExchange =
     inherit IExchange
-    abstract member GetFuturesPositions: string option -> Async<Result<ExchangePosition seq, string>>
+    abstract member GetFuturesPositions: Symbol option -> Async<Result<ExchangePosition seq, string>>
     abstract member TrackPositions: MailboxProcessor<PositionCommand> * Symbol seq -> Async<unit>
 
