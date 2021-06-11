@@ -46,7 +46,6 @@ let config =
     let config = BybitConfig.Default
     config.AddApiKey ("api_key", apiKey.Key)
     config.ApiSecret <-  apiKey.Secret
-    Log.Debug("API keys {Key}, {Secret}", config.ApiKey, config.ApiSecret)
     config
 
 let coinMClient = BybitCoinMApi(config)   
