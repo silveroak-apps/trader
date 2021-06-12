@@ -226,7 +226,7 @@ let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal opt
     | v -> v // no change in stop loss
 
 let private calculatePnl (position: PositionAnalysis) (price: OrderBookTickerInfo) =
-    let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
+    let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercentFor position.ExchangeId
     let qty = decimal <| Math.Abs(position.PositionAmount)
     let pnl = 
         match position.PositionSide with
