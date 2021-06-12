@@ -262,14 +262,17 @@ let private printPositions (positions: PositionAnalysis seq) =
     |> Seq.iter (fun pos ->
             Log.Information("Position: {@Position}", pos) 
             Log.Information("Exchange: {Exchange}, Symbol: {Symbol}, PNL: {PNL}, 
-            PNL %: {PNLPercent}, IsStoppedOut: {IsStoppedOut}, EntryPrice: {EntryPrice}, CurrentPrice: {CurrentPrice}", 
+            PNL %: {PNLPercent}, IsStoppedOut: {IsStoppedOut}, EntryPrice: {EntryPrice}, CurrentPrice: {CurrentPrice},
+            RealisedPNL: {RealisedPNL}, UnrealisedPNL: {UnrealisedPNL}", 
                 pos.ExchangeId,
                 pos.Symbol,
                 pos.CalculatedPnl,
                 pos.CalculatedPnlPercent,
                 pos.IsStoppedOut,
                 pos.EntryPrice,
-                pos.MarkPrice)  
+                pos.MarkPrice,
+                pos.RealisedPnl,
+                pos.UnrealisedPnl)  
         )
 
 let private cleanUpStoppedPositions () =
