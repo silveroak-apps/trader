@@ -84,8 +84,11 @@ let toExchangeOrder (signalCommand: FuturesSignalCommandView) =
             }
         ) orderSide
 
-let calcSlippage orderBookPrice desiredPrice =
-    ( orderBookPrice - desiredPrice ) * 100M / desiredPrice
+let calcSlippage (orderSide: OrderSide) orderBookPrice desiredPrice =
+    match orderSide with
+    | BUY  -> ( orderBookPrice - desiredPrice ) * 100M / desiredPrice
+    | SELL -> ( desiredPrice - orderBookPrice ) * 100M / desiredPrice
+    | _    ->  0M // not relevant won't happen :/
 
 let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) maxSlippage =
     asyncResult {
@@ -96,7 +99,7 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) maxSlippage =
 
         let assetQty = Math.Abs(s.Quantity) * 1M<qty> // need to take abs value to ensure the right amount is used for longs/shorts
         let! orderPrice = determineOrderPrice exchange s orderSide
-        let slippage = calcSlippage orderPrice s.Price
+        let slippage = calcSlippage orderSide orderPrice s.Price
         if slippage > maxSlippage && s.Action = "OPEN"
         then
             Log.Warning("Not Placing any {OrderSide} order with reduced spread loss. Signal suggested price: {SignalSuggestedPrice}. Order request price: {OrderRequestPrice} as Slippaged crossed {Slippage}",
