@@ -10,7 +10,7 @@ open Serilog.Context
 open Serilog
 open System.Collections.Concurrent
 
-type BybitLinearPositionListResultBase = IO.Swagger.Model.LinearPositionListResultBase
+type BybitLinearPositionListResultBase = IO.Swagger.Model.LinearPositionList
 type BybitLinearPosition = IO.Swagger.Model.LinearPositionListResult
 
 type BybitPositionListResultBase = IO.Swagger.Model.Position
@@ -64,17 +64,16 @@ let private toExchangePosition' (p: BybitPosition) : Types.ExchangePosition =
 let getUSDTPositionsFromBybitAPI (client: BybitUSDTPositionsApi) (symbolFilter: Symbol option) =
     async {
         
-        let! responseObj =
+        let! response =
             match symbolFilter with
-            | Some (Symbol s) -> client.LinearPositionsMyPositionAsync s
-            | None            -> client.LinearPositionsMyPositionAsync ()
+            | Some (Symbol s) -> client.GetActivePositionsAsync s
+            | None            -> client.GetActivePositionsAsync ()
             |> Async.AwaitTask
         
-        let jobj = responseObj :?> Newtonsoft.Json.Linq.JObject
-        let response = jobj.ToObject<BybitLinearPositionListResultBase>()
+
         if response.RetCode ?= 0M
         then
-            return Ok (response.Result |> Seq.map toExchangePosition)
+            return Ok (response.GetResult() |> Seq.map toExchangePosition)
         else
             return Result.Error (sprintf "Error getting USDT positions from Bybit: [%A]%s" response.RetCode response.RetMsg)
     }
@@ -82,25 +81,16 @@ let getUSDTPositionsFromBybitAPI (client: BybitUSDTPositionsApi) (symbolFilter: 
 let getCoinMPositionsFromBybitAPI (client: BybitCoinMPositionsApi) (symbolFilter: Symbol option) =
     async {
         
-        let! responseObj =
+        let! response =
             match symbolFilter with
-            | Some (Symbol s) -> client.PositionsMyPositionAsync s
-            | None            -> client.PositionsMyPositionAsync ()
+            | Some (Symbol s) -> client.GetActivePositionsAsync s
+            | None            -> client.GetActivePositionsAsync ()
             |> Async.AwaitTask
 
-        let jobj = responseObj :?> Newtonsoft.Json.Linq.JObject
-        let response = jobj.ToObject<BybitPositionListResultBase>()
         if response.RetCode ?= 0M
         then
             let result = 
-                match symbolFilter with
-                | None -> 
-                    let jPositions = response.Result :?> Newtonsoft.Json.Linq.JArray
-                    jPositions.ToObject<BybitPosition seq>()
-                | _    -> 
-                    let jPos = response.Result :?> Newtonsoft.Json.Linq.JObject
-                    Seq.singleton (jPos.ToObject<BybitPosition>())
-                
+                response.GetResult()
                 |> Seq.map toExchangePosition'
                 |> Ok
             return result
