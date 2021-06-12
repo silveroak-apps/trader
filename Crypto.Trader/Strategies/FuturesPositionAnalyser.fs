@@ -260,20 +260,9 @@ let private printPositions (positions: PositionAnalysis seq) =
     positions
     |> Seq.filter (fun pos -> pos.PositionAmount <> 0m)
     |> Seq.iter (fun pos ->
-            Log.Information("Position: {@Position}", pos) 
-            Log.Information("Exchange: {Exchange}, Symbol: {Symbol}, PNL: {PNL}, 
-            PNL %: {PNLPercent}, IsStoppedOut: {IsStoppedOut}, EntryPrice: {EntryPrice}, CurrentPrice: {CurrentPrice},
-            RealisedPNL: {RealisedPNL}, UnrealisedPNL: {UnrealisedPNL}", 
-                pos.ExchangeId,
-                pos.Symbol,
-                pos.CalculatedPnl,
-                pos.CalculatedPnlPercent,
-                pos.IsStoppedOut,
-                pos.EntryPrice,
-                pos.MarkPrice,
-                pos.RealisedPnl,
-                pos.UnrealisedPnl)  
+            Log.Information("Position: {Position}", pos) 
         )
+    Log.Information("We have {PositionSize} open positions", positions |> Seq.length)    
 
 let private cleanUpStoppedPositions () =
     let positionsToRemove =
@@ -291,14 +280,14 @@ let private refreshPositions (exchange: IFuturesExchange seq) =
         async {
             Log.Information ("Refreshing positions from {Exchange}", exchange.Name)
             
-            let! positions = getPositionsFromExchange exchange None
-            savePositions positions
+            let! exchangePositions = getPositionsFromExchange exchange None
+            let exchangePositions' = savePositions exchangePositions
+
 
             Log.Information "Now cleaning up old stopped out positions"
             cleanUpStoppedPositions ()
 
-            Log.Information ("We have {PositionCount} positions now.", positions |> Seq.length)
-            printPositions positions
+            printPositions positions.Values
         })
     |> Async.Parallel
     |> Async.Ignore

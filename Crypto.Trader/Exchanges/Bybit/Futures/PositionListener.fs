@@ -35,12 +35,16 @@ let toExchangePosition (p: BybitLinearPosition) : Types.ExchangePosition =
     {
         Types.ExchangePosition.MarginType = FuturesMarginType.UNKNOWN // for now the lib doesn't expose this. need to fix
         Leverage = p.Leverage.GetValueOrDefault () |> decimal
-        Side = PositionSide.FromString p.Side
+        Side = 
+            match p.Side with 
+            | "Buy"     -> PositionSide.LONG
+            | "Sell"    -> PositionSide.SHORT
+            | _         -> PositionSide.NOT_APPLICABLE
         Symbol = Symbol p.Symbol
         EntryPrice = p.EntryPrice.GetValueOrDefault () |> decimal
         MarkPrice = 0M // doesn't look like the api returns this
         Amount = p.Size.GetValueOrDefault () |> decimal
-        RealisedPnL = p.CumRealisedPnl.GetValueOrDefault() |> decimal
+        RealisedPnL = p.CumRealisedPnl.GetValueOrDefault() |> decimal        
         UnRealisedPnL = 0M // looks like this isn't returned in the response
         IsolatedMargin = p.PositionMargin.GetValueOrDefault() |> decimal // TODO find out if this is right?
         LiquidationPrice = p.LiqPrice.GetValueOrDefault() |> decimal
@@ -50,7 +54,11 @@ let private toExchangePosition' (p: BybitPosition) : Types.ExchangePosition =
     {
         Types.ExchangePosition.MarginType = FuturesMarginType.UNKNOWN // for now the lib doesn't expose this. need to fix
         Leverage = p.Leverage.GetValueOrDefault () |> decimal
-        Side = PositionSide.FromString p.Side
+        Side = 
+            match p.Side with 
+            | "Buy"     -> PositionSide.LONG
+            | "Sell"    -> PositionSide.SHORT
+            | _         -> PositionSide.NOT_APPLICABLE
         Symbol = Symbol p.Symbol
         EntryPrice = p.EntryPrice.GetValueOrDefault () |> decimal
         MarkPrice = 0M // doesn't look like the api returns this
