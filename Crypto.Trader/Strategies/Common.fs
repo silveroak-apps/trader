@@ -48,5 +48,10 @@ let raiseMarketEvent (marketEvent: MarketEvent) =
     }
 
 // TODO move slippage to db config
-let tracePriceSlippageAllowance = 0.3M // 0.3% change in price is the max we tolerate before placing a trade
-let futuresTradeFeesPercent = 0.05M // Futures trade fees (without leverage in each direction) assume the worst: current market order fees for Binance is 0.04% (https://www.binance.com/en/support/articles/360033544231)
+let tradePriceSlippageAllowance = 0.3M // 0.3% change in price is the max we tolerate before placing a trade
+
+let futuresTradeFeesPercentFor (ExchangeId exchangeId) = 
+    match exchangeId with
+    | v when v = Binance.Futures.Common.ExchangeId -> 0.05M // Futures trade fees (without leverage in each direction) assume the worst: current market order fees for Binance is 0.04% (https://www.binance.com/en/support/articles/360033544231)
+    | v when v = Bybit.Futures.Common.ExchangeId -> 0M // We get maker fees, which is actually -ve (i.e in our favour) - but let's be conservative here for now
+    | _ -> 0.1M

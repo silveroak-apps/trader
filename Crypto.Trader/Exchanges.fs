@@ -3,8 +3,8 @@ module Trader.Exchanges
 
 let knownExchanges =
     [
-        Binance.Futures.Trade.getExchange()
-        //Bybit.Futures.PositionListener.getExchange1()
+        //Binance.Futures.Trade.getExchange()
+        Bybit.Futures.Trade.getExchange()
         // Simulator.Exchange.getExchange(Binance.Futures.Trade.getExchange()) // TODO refactor this to make it consistent with Binance
     ]
     |> Seq.map (fun exchange -> (exchange.Id, exchange))
@@ -30,17 +30,17 @@ let usdtSymbols  =
         // ("ETHUSDT", { Multiplier = 1 })
         // ("ADAUSDT", { Multiplier = 1 })
         // ("DOTUSDT", { Multiplier = 1 })
-        // ("DOGEUSDT", { Multiplier = 1 })
-        //("MATICUSDT", { Multiplier = 1 })
+        ("DOGEUSDT", { Multiplier = 1 })
+        // ("MATICUSDT", { Multiplier = 1 })
         // ("LUNAUSDT", { Multiplier = 1 })
     ]
 
 let coinMSymbols =
     dict [ 
-        ("BNBUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
+        // ("BNBUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
         // ("BTCUSD_PERP", { Multiplier = 100 }) // 1 cont = 100 USD
-        //("BTCUSD", { Multiplier = 100 }) // 1 cont = 100 USD
-        //("ETHUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
+        ("BTCUSD", { Multiplier = 100 }) // 1 cont = 100 USD
+        // ("ETHUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
         // ("ADAUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
         // ("DOTUSD_PERP", { Multiplier = 10 })  // 1 cont = 10 USD
     ]

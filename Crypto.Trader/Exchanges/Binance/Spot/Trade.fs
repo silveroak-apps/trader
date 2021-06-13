@@ -435,7 +435,7 @@ let getCurrentPrice (symbol: string) =
             return None
     }
 
-let getOrderBookCurrentPrice (symbol: string) =
+let getOrderBookCurrentPrice (Symbol symbol) =
     async {
         let! response = httpAsyncRequest ("https://api.binance.com/api/v3/ticker/bookTicker", [ ("symbol", symbol) ], [], "GET", true)      
         let! responseBody = response.Content.ReadAsStringAsync() |> Async.AwaitTask

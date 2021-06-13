@@ -41,7 +41,7 @@ let private findOrderSide (positionSide: PositionSide) (signalAction: SignalActi
 
 let determineOrderPrice (exchange: IExchange) (s: FuturesSignalCommandView) (orderSide: OrderSide) = 
     asyncResult {
-        let! orderBook = exchange.GetOrderBookCurrentPrice s.Symbol
+        let! orderBook = exchange.GetOrderBookCurrentPrice (Symbol s.Symbol)
         // reduce potential loss due to spread
         let positionSide = PositionSide.FromString s.PositionType
         let result =
@@ -84,8 +84,11 @@ let toExchangeOrder (signalCommand: FuturesSignalCommandView) =
             }
         ) orderSide
 
-let calcSlippage orderBookPrice desiredPrice =
-    ( orderBookPrice - desiredPrice ) * 100M / desiredPrice
+let calcSlippage (orderSide: OrderSide) orderBookPrice desiredPrice =
+    match orderSide with
+    | BUY  -> ( orderBookPrice - desiredPrice ) * 100M / desiredPrice
+    | SELL -> ( desiredPrice - orderBookPrice ) * 100M / desiredPrice
+    | _    ->  0M // not relevant won't happen :/
 
 let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) maxSlippage =
     asyncResult {
@@ -96,7 +99,7 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) maxSlippage =
 
         let assetQty = Math.Abs(s.Quantity) * 1M<qty> // need to take abs value to ensure the right amount is used for longs/shorts
         let! orderPrice = determineOrderPrice exchange s orderSide
-        let slippage = calcSlippage orderPrice s.Price
+        let slippage = calcSlippage orderSide orderPrice s.Price
         if slippage > maxSlippage && s.Action = "OPEN"
         then
             Log.Warning("Not Placing any {OrderSide} order with reduced spread loss. Signal suggested price: {SignalSuggestedPrice}. Order request price: {OrderRequestPrice} as Slippaged crossed {Slippage}",
@@ -120,6 +123,7 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) maxSlippage =
                 Quantity = assetQty
                 PositionSide = PositionSide.FromString s.PositionType
                 OrderType = OrderType.LIMIT
+                SignalCommandId = s.Id
             }
 
             // TODO: Review this flow and see if we need to indicate that a 'rejected' order can't be simply retried
@@ -368,17 +372,17 @@ let private mkTradeAgent
                         let attemptCount = 1
                         let maxAttempts = if s.Action = "OPEN" then 5 else 100
                         let cancellationDelay = if s.Action = "OPEN" then 5 else 5 // seconds
-                        let maxSlippage = Strategies.Common.tracePriceSlippageAllowance // % TODO should we pass this from outside?
+                        let maxSlippage = Strategies.Common.tradePriceSlippageAllowance
 
                         (*
                         1 find our which exchange to place order
                         2 find latest orderbook price from exchange (handle errors + 3 retries to get latest price) 
-                        3 place order (handle network errors, Binance API errors etc and retry upto 3 times OR less -> till we get an orderID back)
+                        3 place order (handle network errors, Exchange API errors etc and retry upto 3 times OR less -> till we get an orderID back)
                         4 save order (handle errors + 3 retries for db errors)
                         5 wait for order to fill for 'x' seconds
                         6 query order (handle errors + 3 retries) 
                         6 if filled, save order (handle errors + 3 retries for db errors) --> done
-                        7 if not filled, cancel order (handle errors + 3 retries for network/Binance errors)
+                        7 if not filled, cancel order (handle errors + 3 retries for network/Exchange errors)
                         8 if not filled, repeat steps from 2 -> with a new order, and updated qty (only use remaining qty) : repeat 'n' times for OPEN, 'm' times for CLOSE
                         9 if retries at any stage are exhausted, give up
                         10 if we manage to fill order fully, saveOrder (the new ones that happen during retries + handle db save errors)

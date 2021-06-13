@@ -14,7 +14,8 @@ open Strategies.Common
 
 type PositionKey = PositionKey of string
 
-type PositionAnalysis = {
+type private PositionAnalysis = {
+    ExchangeId: ExchangeId
     EntryPrice: decimal
     Symbol: Symbol
     IsolatedMargin: decimal
@@ -93,7 +94,7 @@ let private printPositionSummary () =
         )
     Async.unit
 
-let private getPositionsFromExchange (exchange: IFuturesExchange) (symbol: string option) =
+let private getPositionsFromExchange (exchange: IFuturesExchange) (symbol: Symbol option) =
     async {
         let! positionsResult = exchange.GetFuturesPositions(symbol)
 
@@ -119,6 +120,7 @@ let private getPositionsFromExchange (exchange: IFuturesExchange) (symbol: strin
                         UnrealisedPnl = p.UnRealisedPnL
                         IsStoppedOut = false
                         CloseRaisedTime = None
+                        ExchangeId = exchange.Id
                         // EntryTime we don't actually know - unless we query orders and guess / calculate over time :|
                     })
             | Result.Error s ->
@@ -165,7 +167,7 @@ let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
                                 UnrealisedPnl = p.UnRealisedPnL
                         })
                     }
-            | false, (Symbol s) ->
+            | false, s->
                 getPositionsFromExchange exchange (Some s)
                 |> Async.map Seq.tryHead
         match pos' with
@@ -234,7 +236,7 @@ let calculateStopLoss (position: PositionAnalysis) (currentGain: decimal option)
 
 /// Calculates net PNL _after_ fees considering leverage.
 let private calculatePnl (position: PositionAnalysis) (price: OrderBookTickerInfo) =
-    let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
+    let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercentFor position.ExchangeId
     let qty = decimal <| Math.Abs(position.PositionAmount)
     let pnl = 
         match position.PositionSide with
@@ -268,8 +270,9 @@ let private printPositions (positions: PositionAnalysis seq) =
     positions
     |> Seq.filter (fun pos -> pos.PositionAmount <> 0m)
     |> Seq.iter (fun pos ->
-            Log.Information("Position: {@Position}", pos) 
+            Log.Information("Position: {Position}", pos) 
         )
+    Log.Information("We have {PositionSize} open positions", positions |> Seq.length)    
 
 let private cleanUpStoppedPositions () =
     let positionsToRemove =
@@ -287,14 +290,14 @@ let private refreshPositions (exchange: IFuturesExchange seq) =
         async {
             Log.Information ("Refreshing positions from {Exchange}", exchange.Name)
             
-            let! positions = getPositionsFromExchange exchange None
-            savePositions positions
+            let! exchangePositions = getPositionsFromExchange exchange None
+            let exchangePositions' = savePositions exchangePositions
+
 
             Log.Information "Now cleaning up old stopped out positions"
             cleanUpStoppedPositions ()
 
-            // Log.Information ("We have {PositionCount} positions now.", positions.Count)
-            printPositions positions
+            printPositions positions.Values
         })
     |> Async.Parallel
     |> Async.Ignore
@@ -406,6 +409,9 @@ let trackPositions (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
     tradeAgent.Error.Add(raise)
 
     repeatEvery (TimeSpan.FromSeconds(3.0)) printPositionSummary "PositionSummaryPrinter" |> Async.Start
+
+    // required to ensure we get reasonably fresh data about positions
+    // 
     repeatEvery (TimeSpan.FromSeconds(15.0)) (fun () -> refreshPositions exchanges) "PositionRefresh" |> Async.Start
 
     exchanges
