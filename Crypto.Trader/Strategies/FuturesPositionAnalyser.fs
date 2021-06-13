@@ -14,7 +14,7 @@ open Strategies.Common
 
 type PositionKey = PositionKey of string
 
-type private PositionAnalysis = {
+type PositionAnalysis = {
     ExchangeId: ExchangeId
     EntryPrice: decimal
     Symbol: Symbol
