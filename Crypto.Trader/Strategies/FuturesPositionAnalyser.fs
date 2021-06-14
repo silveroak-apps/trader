@@ -78,17 +78,19 @@ let private printPositionSummary () =
     |> Seq.iter (fun pos -> 
             match pos.CalculatedPnl, pos.CalculatedPnlPercent with
             // find the units of qty: so we know what the pnl is in.
+            // TODO fix this
             | Some pnl, Some pnlP ->
-                let symbol = pos.Symbol.ToString()
-                let found, symbolUnits = coinMSymbols.TryGetValue symbol
-                let pnlUsd, unitName = 
-                    if found then (pnl / decimal symbolUnits.Multiplier), "USD"
-                    else pnl, "USDT"
+                // let symbol = pos.Symbol.ToString()
+                // let found, symbolUnits = coinMSymbols.TryGetValue symbol
+                // let pnlUsd, unitName = 
+                //     if found then (pnl / decimal symbolUnits.Multiplier), "USD"
+                //     else 
+                //pnl, "???"
 
                 Log.Information("{Symbol} [{PositionSide}]: {Pnl:0.0000} {UnitName} [{PnlPercent:0.00} %]. Stop: {StopLossPercent:0.00} %", 
                     pos.Symbol.ToString(), 
                     pos.PositionSide,
-                    pnlUsd, unitName, pnlP,
+                    pnl, "???", pnlP,
                     Option.defaultValue -9999M pos.StoplossPnlPercentValue) 
             | _ -> ()
         )
@@ -386,7 +388,7 @@ let private mkTradeAgent (exchanges: IFuturesExchange seq) =
         messageLoop()
     )
 
-let trackPositions (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
+let trackPositions (exchanges: IFuturesExchange seq) =
     use _x = LogContext.PushProperty ("Futures", true)
 
     Log.Information "Starting socket client for Binance futures user data stream"
@@ -405,7 +407,7 @@ let trackPositions (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
     repeatEvery (TimeSpan.FromSeconds(15.0)) (fun () -> refreshPositions exchanges) "PositionRefresh" |> Async.Start
 
     exchanges
-    |> Seq.map (fun exchange -> exchange.TrackPositions (tradeAgent, symbols))
+    |> Seq.map (fun exchange -> exchange.TrackPositions tradeAgent)
     |> Async.Parallel
     |> Async.Ignore
 

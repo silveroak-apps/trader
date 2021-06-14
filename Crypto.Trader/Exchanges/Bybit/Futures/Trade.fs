@@ -175,5 +175,7 @@ let getExchange () =
         member __.GetOrderBookCurrentPrice s = Bybit.Futures.Common.getOrderBookCurrentPrice s
 
         member __.GetFuturesPositions symbolFilter = PositionListener.getPositions symbolFilter
-        member __.TrackPositions(agent, symbols) = PositionListener.trackPositions agent symbols 
+        member __.TrackPositions agent = PositionListener.trackPositions agent
+        member __.GetSupportedSymbols () =
+            Common.usdtSymbols
     }

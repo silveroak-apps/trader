@@ -85,3 +85,23 @@ let getOrderBookCurrentPrice (Symbol s) : Async<Result<Types.OrderBookTickerInfo
             else Result.Error (sprintf "No results for Bybit orderbook API call")
         return result
     }
+
+// TODO move this to config / db?
+// UnitName is what the 'quantity' refers to in the API calls.
+// From there we derive a USD value - if it is USDT, we leave it as is.
+// If it is 'CONT' or contracts, we can convert to USD
+
+
+let usdtSymbols =
+   dict [
+        (Symbol "BTCUSDT",  { Multiplier = 1 })
+        (Symbol "ETHUSDT",  { Multiplier = 1 })
+        (Symbol "DOGEUSDT", { Multiplier = 1 })
+   ]
+
+let coinMSymbols =
+   dict [
+        (Symbol "BTCUSD",  { Multiplier = 1 })
+        (Symbol "ETHUSD",  { Multiplier = 1 })
+        (Symbol "DOGEUSD", { Multiplier = 1 })
+   ]

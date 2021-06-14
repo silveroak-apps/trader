@@ -157,7 +157,7 @@ let private listenFutures (tradeAgent: MailboxProcessor<PositionCommand>) (clien
         |> Seq.map (listenToFuturesPriceTickerForSymbol tradeAgent socketClientFutures)
         |> Seq.reduce ((&&))
 
-let trackPositions (tradeAgent: MailboxProcessor<PositionCommand>) (symbols: Symbol seq) =
+let trackPositions (tradeAgent: MailboxProcessor<PositionCommand>)  =
     use _x = LogContext.PushProperty ("Futures", true)
 
     let client = getBaseClient ()
@@ -165,8 +165,8 @@ let trackPositions (tradeAgent: MailboxProcessor<PositionCommand>) (symbols: Sym
 
     Log.Information "Starting socket client for Binance futures user data stream"
     
-    let usdtSymbols = symbols |> Seq.filter (fun (Symbol s) -> s.EndsWith "USDT")
-    let coinMSymbols = symbols |> Seq.except usdtSymbols
+    let usdtSymbols = Common.usdtSymbols.Keys
+    let coinMSymbols = Common.coinMSymbols.Keys
 
     let listenCOINM = 
         if not <| Seq.isEmpty coinMSymbols
