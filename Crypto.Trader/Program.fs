@@ -77,12 +77,10 @@ let main (argv: string[]) =
         // start analysers
         Strategies.FuturesPositionAnalyser.trackPositions
             Trader.Exchanges.knownExchanges.Values
-            Trader.Exchanges.allSymbols
         |> Async.Start
 
         Strategies.FuturesKLineAnalyser.startAnalysis
             Trader.Exchanges.knownExchanges.Values
-            Trader.Exchanges.allSymbols
         |> Async.Start
 
         WebApi.run placeRealOrders // this will block

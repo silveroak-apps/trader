@@ -1,6 +1,7 @@
 ﻿module Types
 
 open System
+open System.Collections.Generic
 
 let Qty : (decimal -> decimal<qty>) = (*) 1M<qty>
 let Price : (decimal -> decimal<price>) = (*) 1M<price>
@@ -170,16 +171,22 @@ type PositionCommand =
     | FuturesBookPrice of ExchangeId * OrderBookTickerInfo
     | RefreshPositions
 
+type ContractDetails = {
+    Multiplier: int // i.e if it is contracts, how many USD is 1 contract
+}
+
 type IExchange = 
     abstract member PlaceOrder : OrderInputInfo -> Async<Result<OrderInfo, OrderError>>
     abstract member QueryOrder : OrderQueryInfo -> Async<OrderStatus>
     abstract member CancelOrder : OrderQueryInfo -> Async<Result<bool, string>>
     abstract member GetOrderBookCurrentPrice : Symbol -> Async<Result<OrderBookTickerInfo, string>>
+    
     abstract member Name: string
     abstract member Id: ExchangeId
 
 type IFuturesExchange =
     inherit IExchange
     abstract member GetFuturesPositions: Symbol option -> Async<Result<ExchangePosition seq, string>>
-    abstract member TrackPositions: MailboxProcessor<PositionCommand> * Symbol seq -> Async<unit>
+    abstract member TrackPositions: MailboxProcessor<PositionCommand> -> Async<unit>
+    abstract member GetSupportedSymbols: unit -> IDictionary<Symbol, ContractDetails>
 

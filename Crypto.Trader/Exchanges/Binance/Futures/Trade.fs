@@ -220,9 +220,13 @@ let getExchange() = {
         member __.Name = "BinanceFutures"
 
         member __.GetFuturesPositions symbolFilter = getPositions symbolFilter
-        member __.TrackPositions (agent, symbols) = async { 
-                let started = PositionListener.trackPositions agent symbols
+        member __.TrackPositions (agent) = async { 
+                let started = PositionListener.trackPositions agent
                 Log.Information ("Started Binance position tracker : {Success}", started)
                 return ()
             }
+        member __.GetSupportedSymbols () =
+            Seq.concat [Common.usdtSymbols; Common.coinMSymbols]
+            |> Seq.map (fun kv -> (kv.Key, kv.Value))
+            |> dict
     }

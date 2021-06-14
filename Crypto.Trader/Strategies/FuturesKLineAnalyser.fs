@@ -250,8 +250,9 @@ let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> 
         do! repeatEveryInterval intervalFn fn nameForLogging 
     }
 
-let startAnalysis (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
-    Seq.allPairs exchanges symbols
+let startAnalysis (exchanges: IFuturesExchange seq) =
+    exchanges
+    |> Seq.collect (fun exchange -> exchange.GetSupportedSymbols().Keys |> Seq.map (fun s -> (exchange, s)))
     |> Seq.map (fun (exchange, symbol) ->
             let intervalFn () =
                 let candleKey = {

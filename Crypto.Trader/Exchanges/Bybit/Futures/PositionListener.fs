@@ -131,7 +131,7 @@ let private getLatestPrices (symbols: Symbol seq) =
     |> Seq.map Common.getOrderBookCurrentPrice
     |> Async.Parallel
 
-let trackPositions (agent: MailboxProcessor<PositionCommand>) (symbols: Symbol seq) =
+let trackPositions (agent: MailboxProcessor<PositionCommand>) =
 
     // Ideally, we should subscribe to websocket(s), but for now:
     // just do some polling
@@ -141,6 +141,11 @@ let trackPositions (agent: MailboxProcessor<PositionCommand>) (symbols: Symbol s
 
     let fetchPriceUpdatesAndNotify () =
         asyncResult {
+
+            let symbols = 
+                [Common.coinMSymbols.Keys; Common.usdtSymbols.Keys]
+                |> Seq.concat 
+
             let! prices = getLatestPrices symbols
             prices
             |> Seq.iter (fun pr ->
