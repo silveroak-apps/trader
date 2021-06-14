@@ -226,5 +226,7 @@ let getExchange() = {
                 return ()
             }
         member __.GetSupportedSymbols () =
-            Common.usdtSymbols
+            Seq.concat [Common.usdtSymbols; Common.coinMSymbols]
+            |> Seq.map (fun kv -> (kv.Key, kv.Value))
+            |> dict
     }

@@ -177,5 +177,7 @@ let getExchange () =
         member __.GetFuturesPositions symbolFilter = PositionListener.getPositions symbolFilter
         member __.TrackPositions agent = PositionListener.trackPositions agent
         member __.GetSupportedSymbols () =
-            Common.usdtSymbols
+            Seq.concat [Common.usdtSymbols; Common.coinMSymbols]
+            |> Seq.map (fun kv -> (kv.Key, kv.Value))
+            |> dict
     }
