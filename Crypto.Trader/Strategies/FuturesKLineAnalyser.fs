@@ -8,6 +8,7 @@ open Strategies.Common
 open Types
 open System.Diagnostics
 open System.Collections.Concurrent
+open Serilog.Context
 
 type private CandleKey = {
     ExchangeId: ExchangeId
@@ -238,6 +239,7 @@ let private analyseHACandles (exchangeId: ExchangeId) (symbol: Symbol) =
 let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> Async<unit>) (nameForLogging: string)  =
     async {
         try
+            use _ = LogContext.PushProperty("Function", nameForLogging)
             let sw = Stopwatch.StartNew ()
             do! fn ()
             sw.Stop ()
@@ -265,7 +267,7 @@ let startAnalysis (exchanges: IFuturesExchange seq) =
                     TimeSpan.FromSeconds <| float (60 - secondsToMinuteBoundary + 1)
                 | _ -> TimeSpan.FromSeconds 1.0
 
-            repeatEveryInterval intervalFn (fun () -> analyseHACandles exchange.Id symbol) "FuturesKLineAnalyser"
+            repeatEveryInterval intervalFn (fun () -> analyseHACandles exchange.Id symbol) (sprintf "FuturesKLineAnalyser-%s-%s" exchange.Name (symbol.ToString()))
         )
     |> Async.Parallel
     |> Async.Ignore

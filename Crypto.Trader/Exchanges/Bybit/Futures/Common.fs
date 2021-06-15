@@ -81,8 +81,8 @@ let getOrderBookCurrentPrice (Symbol s) : Async<Result<Types.OrderBookTickerInfo
                     Result.Ok ticker
 
             elif obResponse.RetCode ?= 0M
-            then Result.Error (sprintf "Error getting orderbook from ByBit: '%s'" obResponse.RetMsg)
-            else Result.Error (sprintf "No results for Bybit orderbook API call")
+            then Result.Error (sprintf "No results for Bybit orderbook API call for symbol: %s" s)
+            else Result.Error (sprintf "Error getting orderbook from ByBit: [%A] %s" obResponse.RetCode obResponse.RetMsg)
         return result
     }
 
