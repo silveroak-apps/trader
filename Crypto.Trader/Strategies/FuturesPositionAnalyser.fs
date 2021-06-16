@@ -57,7 +57,7 @@ let private closeSignal (exchangeName: string) (position: PositionAnalysis) (pri
                 TimeFrame = 1 // hardcode for now
                 Exchange = exchangeName
                 Category = "stopLoss"
-                Contracts = Math.Abs(position.PositionAmount)
+                Contracts = 0M //Math.Abs(position.PositionAmount)  ignoring it for now as strategy handles the position information
             }
 
             let! result = raiseMarketEvent marketEvent
