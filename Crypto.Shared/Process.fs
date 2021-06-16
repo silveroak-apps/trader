@@ -4,10 +4,12 @@ module Process
 open System
 open Serilog
 open System.Diagnostics
+open Serilog.Context
 
 let rec repeatEveryIntervalWhile (shouldContinue : unit -> bool) (interval: TimeSpan) (fn: unit -> Async<unit>) (nameForLogging: string)  =
     async {
         try
+            use _ = LogContext.PushProperty("Function", nameForLogging)
             let sw = Stopwatch.StartNew ()
             do! fn ()
             sw.Stop ()

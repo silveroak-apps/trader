@@ -81,8 +81,8 @@ let getOrderBookCurrentPrice (Symbol s) : Async<Result<Types.OrderBookTickerInfo
                     Result.Ok ticker
 
             elif obResponse.RetCode ?= 0M
-            then Result.Error (sprintf "Error getting orderbook from ByBit: '%s'" obResponse.RetMsg)
-            else Result.Error (sprintf "No results for Bybit orderbook API call")
+            then Result.Error (sprintf "No results for Bybit orderbook API call for symbol: %s" s)
+            else Result.Error (sprintf "Error getting orderbook from ByBit for symbol (%s): [%A] %s" s obResponse.RetCode obResponse.RetMsg)
         return result
     }
 
@@ -97,11 +97,18 @@ let usdtSymbols =
         (Symbol "BTCUSDT",  { Multiplier = 1 })
         (Symbol "ETHUSDT",  { Multiplier = 1 })
         (Symbol "DOGEUSDT", { Multiplier = 1 })
+        // (Symbol "LTCUSDT", { Multiplier = 1 })
+        // (Symbol "LINKUSDT", { Multiplier = 1 })
+        // (Symbol "ADAUSDT", { Multiplier = 1 })
+        // (Symbol "DOTUSDT", { Multiplier = 1 })
+        // (Symbol "UNIUSDT", { Multiplier = 1 })
+        // (Symbol "AAVEUSDT", { Multiplier = 1 })
    ]
 
 let coinMSymbols =
    dict [
-        (Symbol "BTCUSD",  { Multiplier = 1 })
-        (Symbol "ETHUSD",  { Multiplier = 1 })
-        (Symbol "DOGEUSD", { Multiplier = 1 })
+        (Symbol "BTCUSD", { Multiplier = 1 })
+        (Symbol "ETHUSD", { Multiplier = 1 })
+        (Symbol "EOSUSD", { Multiplier = 1 })
+        (Symbol "XRPUSD", { Multiplier = 1 })
    ]
