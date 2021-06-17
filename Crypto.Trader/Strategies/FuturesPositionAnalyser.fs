@@ -11,7 +11,7 @@ open FsToolkit.ErrorHandling
 open Types
 open Trader.Exchanges
 open Strategies.Common
-
+open Serilog.Context
 type PositionKey = PositionKey of string
 
 type PositionAnalysis = {
@@ -286,15 +286,15 @@ let private cleanUpStoppedPositions () =
     |> Seq.map (fun p -> makePositionKey p.Symbol p.PositionSide)
     |> Seq.iter (fun key -> positions.Remove key |> ignore)
 
-let private refreshPositions (exchange: IFuturesExchange seq) =
-    exchange
+let private refreshPositions (exchanges: IFuturesExchange seq) =
+    exchanges
     |> Seq.map (fun exchange ->
-        async {
+        asyncResult {
+            use _ = LogContext.PushProperty("Exchange", exchange.Name)
             Log.Information ("Refreshing positions from {Exchange}", exchange.Name)
-            
-            let! exchangePositions = getPositionsFromExchange exchange None
-            let exchangePositions' = savePositions exchangePositions
 
+            let! exchangePositions = getPositionsFromExchange exchange None
+            savePositions exchangePositions |> ignore
 
             Log.Information "Now cleaning up old stopped out positions"
             cleanUpStoppedPositions ()
@@ -334,15 +334,6 @@ let private updatePositionPnl (exchange: IFuturesExchange) (price: OrderBookTick
                     do! Async.Sleep (45 * 1000) // 45 seconds
                     do! refreshPositions [exchange]
                 }
-                |> Async.Catch
-                |> Async.map (fun c ->
-                        match c with
-                        | Choice2Of2 ex -> 
-                            Log.Error(ex, "Error trying to close position: {Error}", ex.Message)
-                            c
-                        | _ -> c
-                    )
-                |> Async.Ignore
                 |> Async.Start
         )
 

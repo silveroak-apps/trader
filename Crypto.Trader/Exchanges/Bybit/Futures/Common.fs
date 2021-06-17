@@ -34,6 +34,7 @@ type ByBitOBResponse = IO.Swagger.Model.OrderBookBase
 type ByBitOBResultResponse = IO.Swagger.Model.OderBookRes
 
 let ExchangeId = 5L
+let ExchangeName = "BybitFutures"
 
 let cfg = appConfig.GetSection "ByBit"
 

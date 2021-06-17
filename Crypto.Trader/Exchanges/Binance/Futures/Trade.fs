@@ -191,6 +191,8 @@ let private getOrderBookCurrentPrice (Symbol s) =
                         ) 
     }
  
+let private exchangeName = "BinanceFutures"
+
 let private getPositions (symbolFilter: Symbol option) =
     async {
         let client = getBaseClient()
@@ -217,7 +219,7 @@ let getExchange() = {
         member __.CancelOrder o = cancelOrder o
         member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice s
         member __.Id = Types.ExchangeId ExchangeId
-        member __.Name = "BinanceFutures"
+        member __.Name = exchangeName
 
         member __.GetFuturesPositions symbolFilter = getPositions symbolFilter
         member __.TrackPositions (agent) = async { 
