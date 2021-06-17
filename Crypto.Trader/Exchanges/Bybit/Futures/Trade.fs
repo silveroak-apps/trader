@@ -166,7 +166,7 @@ let cancelOrder (o: OrderQueryInfo) =
 let getExchange () =
     { new IFuturesExchange with
         member __.Id = Types.ExchangeId Common.ExchangeId
-        member __.Name = "ByBitFutures"
+        member __.Name = Common.ExchangeName
 
         member __.CancelOrder o = cancelOrder o
         member __.PlaceOrder o = placeOrder o

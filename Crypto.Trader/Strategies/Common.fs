@@ -2,6 +2,7 @@ module Strategies.Common
 open System.Net.Http
 open System.Text.Json
 open Types
+open Serilog
 
 let knownMarketDataProviders = dict [
     ( ExchangeId Binance.Futures.Common.ExchangeId, Binance.Futures.Market.getMarketDataProvider () )
@@ -34,15 +35,20 @@ let raiseMarketEvent (marketEvent: MarketEvent) =
            
             let json = JsonSerializer.Serialize(marketEvent, jsonOptions)
             let content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
-            let! response =
-                marketEventHttpClient.PostAsync(marketEvtUrl, content) 
-                |> Async.AwaitTask
             
-            if response.IsSuccessStatusCode
-            then 
-                return Ok marketEvent
-            else 
-                return (Error <| sprintf "Error raising a market event to close the long: %A - %s" response.StatusCode response.ReasonPhrase)
+            try
+                let! response =
+                    marketEventHttpClient.PostAsync(marketEvtUrl, content) 
+                    |> Async.AwaitTask
+                
+                if response.IsSuccessStatusCode
+                then 
+                    return Ok marketEvent
+                else 
+                    return (Error <| sprintf "Error raising a market event to close a position: %A - %A - %s" marketEvent response.StatusCode response.ReasonPhrase)
+            with ex -> 
+                Log.Error (ex, "Error raising market event: {MarketEvent}", marketEvent)
+                return Error <| sprintf "Error raising a market event to close a position: %A - %A" marketEvent ex
         | _ ->
             return Error ("Position analyser not raising any events because MarketEventUrl is not configured")
     }

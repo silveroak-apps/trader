@@ -69,7 +69,7 @@ let private toExchangePosition' (p: BybitPosition) : Types.ExchangePosition =
         LiquidationPrice = p.LiqPrice.GetValueOrDefault() |> decimal
     }
 
-let getUSDTPositionsFromBybitAPI (client: BybitUSDTPositionsApi) (symbolFilter: Symbol option) =
+let private getUSDTPositionsFromBybitAPI (client: BybitUSDTPositionsApi) (symbolFilter: Symbol option) =
     async {
         
         let! response =
@@ -86,7 +86,7 @@ let getUSDTPositionsFromBybitAPI (client: BybitUSDTPositionsApi) (symbolFilter: 
             return Result.Error (sprintf "Error getting USDT positions from Bybit: [%A]%s" response.RetCode response.RetMsg)
     }
 
-let getCoinMPositionsFromBybitAPI (client: BybitCoinMPositionsApi) (symbolFilter: Symbol option) =
+let private getCoinMPositionsFromBybitAPI (client: BybitCoinMPositionsApi) (symbolFilter: Symbol option) =
     async {
         
         let! response =
@@ -128,7 +128,14 @@ let getPositions (symbolFilter: Symbol option): Async<Result<seq<ExchangePositio
 
 let private getLatestPrices (symbols: Symbol seq) =    
     symbols
-    |> Seq.map Common.getOrderBookCurrentPrice
+    |> Seq.map (fun (Symbol s) -> 
+        async {
+            try
+                let! ob = Common.getOrderBookCurrentPrice (Symbol s)
+                return ob
+            with ex ->
+                return Error <| sprintf "Error getting latest prices from orderbook for symbol %s from %s: %s" s Common.ExchangeName (ex.ToString())
+        })   
     |> Async.Parallel
 
 let trackPositions (agent: MailboxProcessor<PositionCommand>) =
@@ -148,11 +155,11 @@ let trackPositions (agent: MailboxProcessor<PositionCommand>) =
 
             let! prices = getLatestPrices symbols
             prices
-            |> Seq.iter (fun pr ->
-                match pr with
-                | Error s -> Log.Error("Error getting price from Bybit futures: {ErrorMsg}", s)
+            |> Seq.iter (fun r ->
+                match r with
                 | Ok orderBookTicker -> 
                     agent.Post (FuturesBookPrice (Types.ExchangeId Common.ExchangeId, orderBookTicker))
+                | Error s -> Log.Warning ("Error getting orderbook prices from Bybit. Will try again later. Error: {Error}", s)
             )
         }
         |> Async.Ignore

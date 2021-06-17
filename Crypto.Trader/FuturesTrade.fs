@@ -54,7 +54,7 @@ let determineOrderPrice (exchange: IExchange) (s: FuturesSignalCommandView) (ord
             | SELL, SHORT -> orderBook.AskPrice
             | _           -> raise (exn <| sprintf "Unexpected position type value: '%s' trying to determine order price" s.PositionType)
         return result
-    } 
+    }
     |> AsyncResult.mapError exn
     |> AsyncResult.catch id
 
@@ -156,7 +156,7 @@ let private delay = TimeSpan.FromSeconds(1.0)
 let placeOrderWithRetryOnError (exchange: IExchange) (signalCmd: FuturesSignalCommandView) maxSlippage =
     // retry 'retryCount' times, in quick succession if there is an error placing an order
     let placeOrder' = placeOrder exchange signalCmd 
-    placeOrder' |> withRetryOnErrorResult retryCount delay maxSlippage
+    placeOrder' |> withRetryOnErrorResult retryCount delay "placeOrderWithRetryOnError" maxSlippage
 
 let queryOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo) = 
     let queryOrder () =
@@ -167,14 +167,14 @@ let queryOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo
             with
             | e -> return (Result.Error e)
         }
-    queryOrder |> withRetryOnErrorResult retryCount delay ()
+    queryOrder |> withRetryOnErrorResult retryCount delay "queryOrderWithRetryOnError" ()
 
 let cancelOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo) =
     let cancelOrder () =
         exchange.CancelOrder orderQuery
         |> AsyncResult.mapError exn
         |> AsyncResult.catch id
-    cancelOrder |> withRetryOnErrorResult retryCount delay ()
+    cancelOrder |> withRetryOnErrorResult retryCount delay "cancelOrderWithRetryOnError" ()
 
 let private getLatestOrderState exchange order orderQuery =
     let waitMillis = 500.0
