@@ -58,6 +58,12 @@ let determineOrderPrice (exchange: IExchange) (s: FuturesSignalCommandView) (ord
     |> AsyncResult.mapError exn
     |> AsyncResult.catch id
 
+let determineOrderPrice' (exchange: IExchange) (s: FuturesSignalCommandView) =
+    asyncResult {
+        let! orderSide = findOrderSide (PositionSide.FromString s.PositionType) (SignalAction.FromString s.Action)
+        return! determineOrderPrice exchange s orderSide
+    }
+
 let toExchangeOrder (signalCommand: FuturesSignalCommandView) = 
     let orderSide = findOrderSide (PositionSide.FromString signalCommand.PositionType) (SignalAction.FromString signalCommand.Action)
     Result.map (fun os ->
@@ -176,7 +182,7 @@ let cancelOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInf
         |> AsyncResult.catch id
     cancelOrder |> withRetryOnErrorResult retryCount delay "cancelOrderWithRetryOnError" ()
 
-let private getLatestOrderState exchange order orderQuery =
+let private getLatestOrderState exchange order =
     let waitMillis = 500.0
     let maxAttempts = 20 // with exponential backoff, this will take us upto a wait of 6 days!
     let attempt = 1
@@ -221,12 +227,65 @@ let private getLatestOrderState exchange order orderQuery =
             | _ -> return order
         }
 
+    let orderQuery = {
+        OrderQueryInfo.OrderId = OrderId order.ExchangeOrderId
+        Symbol = Symbol order.Symbol
+    }
+    Log.Information("Querying order status after waiting... {Query}", orderQuery)
+
     getLatestOrderStateWithBackOff waitMillis attempt exchange order orderQuery
-    
-let getFilledQty (orders: ExchangeOrder seq) = 
-    if Seq.isEmpty orders
-    then 0M
-    else orders |> Seq.sumBy (fun o -> o.ExecutedQty)
+
+let private getFilledQty (orders: ExchangeOrder seq) = 
+        if Seq.isEmpty orders
+        then 0M
+        else orders |> Seq.sumBy (fun o -> o.ExecutedQty)
+  
+let private getUpdatedCommandWithRemainingQty 
+    (getPositionSize: SignalId -> Async<Result<decimal, exn>>)
+    (ordersSoFar: ExchangeOrder list)
+    (signalCommand: FuturesSignalCommandView) =
+
+    asyncResult {
+        let! openedPositionSize = getPositionSize (SignalId signalCommand.SignalId)
+        let cmd = 
+            match signalCommand.Action with
+            | "CLOSE" ->
+                let newCmd = 
+                    { signalCommand with Quantity = openedPositionSize }
+                Result.Ok newCmd //for now just close the entire position that we have opened
+            | "OPEN" ->
+                // check what we attempted in the previous attempts
+                let executedQtySoFar = getFilledQty ordersSoFar
+                let newCmd = 
+                    { signalCommand with Quantity = signalCommand.Quantity - executedQtySoFar }
+                Ok newCmd
+            | x -> Result.Error (exn <| (sprintf "Unknown signal command action: %s" x)) // TODO model this better
+        return! cmd
+    }
+
+let maxRetryTime = TimeSpan.FromMinutes 1.0
+
+type private TradeFlowWaitResult =
+| MaxWaitTimeReached
+| PriceMoved
+
+let rec private waitForPriceMovementOrMaxTime (exchange: IExchange) (signalCommand: FuturesSignalCommandView) (referencePrice: decimal) =
+    asyncResult {
+        // find best price for our order and see if it has changed.
+        // if it hasn't keep waiting till max retry time       
+        let! price = determineOrderPrice' exchange signalCommand
+        let priceChanged = price <> referencePrice
+        if not priceChanged && (signalCommand.RequestDateTime - DateTime.UtcNow) > maxRetryTime
+        then
+            // wait for a bit and check again
+            do! Async.Sleep 5000 
+            return! (waitForPriceMovementOrMaxTime exchange signalCommand referencePrice)
+        else if priceChanged
+        then
+            return PriceMoved
+        else
+            return MaxWaitTimeReached
+    }
 
 let rec executeOrdersForCommand
     (exchange: IExchange)
@@ -246,10 +305,9 @@ let rec executeOrdersForCommand
         use _ = LogContext.PushProperty("SignalId", signalCommand.SignalId)
         use _ = LogContext.PushProperty("Exchange", exchange.GetType().Name)
 
-        // need to compare with <= rather than 0, because or possible rounding issues due to some exchanges having a LOT size.
-        if attempt > maxAttempts // TODO include slippage condition
+        if attempt > maxAttempts // TODO move the slippage and other exist conditions here
         then 
-            Log.Information("Done retrying {MaxAttempts} times. Giving up on signal command {originalSignalCommand}...",
+            Log.Warning("Done retrying {MaxAttempts} times. Giving up on signal command {originalSignalCommand}...",
                 maxAttempts,
                 signalCommand)
             return ordersSoFar
@@ -258,82 +316,81 @@ let rec executeOrdersForCommand
                 attempt, maxAttempts,
                 signalCommand)
 
-            let! commandWithRemainingQty =
-                // we need to find out how much more qty to place an order for:
-                asyncResult {
-                    let! openedPosition = getPositionSize (SignalId signalCommand.SignalId)
-                    let cmd = 
-                        match signalCommand.Action with
-                        | "CLOSE" ->
-                            Result.Ok { signalCommand with Quantity = openedPosition } //for now just close the entire position that we have opened
-                        | "OPEN" ->
-                            // check what we attempted in the previous attempts
-                            let executedQtySoFar = getFilledQty ordersSoFar
-                            Ok { signalCommand with Quantity = signalCommand.Quantity - executedQtySoFar }
-                        | x -> Result.Error (exn <| (sprintf "Unknown signal command action: %s" x)) // TODO model this better
-                    return! cmd
-                }
+            // we need to find out how much more qty to place an order for:
+            let! commandWithRemainingQty = getUpdatedCommandWithRemainingQty getPositionSize ordersSoFar signalCommand
 
             let! exchangeOrder = placeOrderWithRetryOnError exchange commandWithRemainingQty maxSlippage
             let! newOrder = saveOrder exchangeOrder
-            Log.Information("Saved new order: {InternalOrderId}. {Order}", newOrder.Id, newOrder)
 
+            Log.Information("Saved new order: {InternalOrderId}. {Order}", newOrder.Id, newOrder)
             Log.Information("Waiting {CancellationDelaySeconds} seconds before querying and cancelling if needed.", cancellationDelaySeconds)
+
             let _nseconds = cancellationDelaySeconds * 1000 // millis
             do! Async.Sleep _nseconds
 
-            let orderQuery = {
-                OrderQueryInfo.OrderId = OrderId newOrder.ExchangeOrderId
-                Symbol = Symbol newOrder.Symbol
-            }
-            Log.Information("Querying order status after waiting... {Query}", orderQuery)
-
-            let! updatedOrder = getLatestOrderState exchange newOrder orderQuery
-            
+            let! updatedOrder = getLatestOrderState exchange newOrder
             match updatedOrder.Status with
             | "FILLED" ->
                 let! filledOrder' = saveOrder updatedOrder
                 Log.Information("Filled order: {ExchangeOrder}", filledOrder')
                 return (filledOrder' :: ordersSoFar)
             | _ ->
-                Log.Information("Trying to cancel order {ExchangeOrder} (Signal: {SignalId}), because it didn't fill yet. Current status: {OrderStatus}",
-                    updatedOrder,
-                    updatedOrder.SignalId,
-                    updatedOrder.Status)
 
-                let! cancelled = cancelOrderWithRetryOnError exchange orderQuery
+                let! waitResult = waitForPriceMovementOrMaxTime exchange signalCommand newOrder.Price
+                match waitResult with
+                | MaxWaitTimeReached ->
+                    // do a final check
+                    let! updatedOrder = getLatestOrderState exchange newOrder
+                    let! updatedOrder' = saveOrder updatedOrder
+                    Log.Warning("Done waiting for {RetryTime}. Not doing anything further on signal command {originalSignalCommand}...",
+                        maxRetryTime,
+                        signalCommand)
+                    return (updatedOrder' :: ordersSoFar)
 
-                // we need to query again, so we get a potentially updated executedQty
-                Log.Information ("Cancel order ({OrderId}) attempted, for signal {SignalId}, command {CommandId}. Success: {Success}. Querying latest status...",
-                    newOrder.Id, newOrder.SignalId, signalCommand.Id, cancelled)
+                | PriceMoved ->
+                    Log.Information("Trying to cancel order {ExchangeOrder} (Signal: {SignalId}), because it didn't fill yet. Current status: {OrderStatus}",
+                        updatedOrder,
+                        updatedOrder.SignalId,
+                        updatedOrder.Status)
 
-                let! updatedOrder' = getLatestOrderState exchange updatedOrder orderQuery 
-                let! updatedOrder'' = saveOrder updatedOrder'
-                Log.Information ("Saved order after cancellation attempt: {UpdatedOrder}", updatedOrder'')
+                    let! cancelled = 
+                        let orderQuery = {
+                            OrderQueryInfo.OrderId = OrderId newOrder.ExchangeOrderId
+                            Symbol = Symbol newOrder.Symbol
+                        }
+                        cancelOrderWithRetryOnError exchange orderQuery
 
-                if updatedOrder''.ExecutedQty < signalCommand.Quantity
-                then
-                    Log.Information ("Retrying again - since we didn't fill the original quantity this iteration: Want: {TotalRequiredQty}, FilledSoFar: {FilledQty}",
-                        signalCommand.Quantity, updatedOrder''.ExecutedQty)
-                    let updatedOrders = updatedOrder'' :: ordersSoFar
-                    let! orders = 
-                        executeOrdersForCommand 
-                            exchange 
-                            saveOrder 
-                            getPositionSize
-                            maxSlippage
-                            updatedOrders
-                            cancellationDelaySeconds
-                            maxAttempts (attempt + 1)
-                            signalCommand // send the original command for logging - we always figure out what the right qty remaining is.
+                    // we need to query again, so we get a potentially updated executedQty
+                    Log.Information ("Cancel order ({OrderId}) attempted, for signal {SignalId}, command {CommandId}. Success: {Success}. Querying latest status...",
+                        newOrder.Id, newOrder.SignalId, signalCommand.Id, cancelled)
 
-                    return orders
-                else
-                    Log.Information("Looks like we filled everything for order {ExchangeOrder}, for command {SignalCommand}. Signal: {SignalId}",
-                        updatedOrder',
-                        signalCommand,
-                        signalCommand.SignalId)
-                    return (updatedOrder':: ordersSoFar) // done, looks like we filled everything!
+                    let! updatedOrder' = getLatestOrderState exchange updatedOrder 
+                    let! updatedOrder'' = saveOrder updatedOrder'
+                    Log.Information ("Saved order after cancellation attempt: {UpdatedOrder}", updatedOrder'')
+
+                    if updatedOrder''.ExecutedQty < signalCommand.Quantity
+                    then
+                        Log.Information ("Retrying again - since we didn't fill the original quantity this iteration: Want: {TotalRequiredQty}, FilledSoFar: {FilledQty}",
+                            signalCommand.Quantity, updatedOrder''.ExecutedQty)
+                        let updatedOrders = updatedOrder'' :: ordersSoFar
+                        let! orders = 
+                            executeOrdersForCommand 
+                                exchange 
+                                saveOrder 
+                                getPositionSize
+                                maxSlippage
+                                updatedOrders
+                                cancellationDelaySeconds
+                                maxAttempts (attempt + 1)
+                                signalCommand // send the original command for logging - we always figure out what the right qty remaining is.
+
+                        return orders
+                    else
+                        Log.Information("Looks like we filled everything for order {ExchangeOrder}, for command {SignalCommand}. Signal: {SignalId}",
+                            updatedOrder',
+                            signalCommand,
+                            signalCommand.SignalId)
+                        return (updatedOrder':: ordersSoFar) // done, looks like we filled everything!
     }
 
 type private TradeAgentCommand = 
