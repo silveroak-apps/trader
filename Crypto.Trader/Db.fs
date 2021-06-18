@@ -162,13 +162,8 @@ let private getOrdersForSignal' (signalId: int64) =
 let private getPositionSize' (SignalId signalId) =
     async {
         let positionSql = "
-            SELECT
-            	CASE
-            		WHEN position_type = 'LONG' THEN coalesce (executed_buy_qty, 0) - coalesce (executed_sell_qty, 0)
-            		WHEN position_type = 'SHORT' THEN coalesce (executed_sell_qty, 0) - coalesce (executed_buy_qty, 0)
-            		ELSE -1
-            	END AS position_size
-            FROM futures_positions 
+            SELECT position_size
+            FROM futures_pnl 
             WHERE signal_id = @SignalId
         "
         let! result = getWithParam<decimal> positionSql ({ SignalIdParam.SignalId = signalId } :> obj)
