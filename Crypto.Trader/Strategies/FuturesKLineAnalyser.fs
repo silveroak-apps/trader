@@ -247,7 +247,7 @@ let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> 
         with e -> Log.Warning (e, "Error running function {TimerFunctionName} on timer. Continuing next time...", nameForLogging)
 
         let interval = intervalFn()
-        Log.Debug ("Waiting for {Interval} before another KLine fetch", interval)
+        Log.Verbose ("Waiting for {Interval} before another KLine fetch", interval)
         do! Async.Sleep (int interval.TotalMilliseconds)
         do! repeatEveryInterval intervalFn fn nameForLogging 
     }

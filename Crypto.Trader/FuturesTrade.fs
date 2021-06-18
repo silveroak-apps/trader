@@ -269,17 +269,18 @@ type private TradeFlowWaitResult =
 | MaxWaitTimeReached
 | PriceMoved
 
-let rec private waitForPriceMovementOrMaxTime (exchange: IExchange) (signalCommand: FuturesSignalCommandView) (referencePrice: decimal) =
+let rec private waitForPriceMovementOrMaxTime (exchange: IExchange) (signalCommand: FuturesSignalCommandView) (order: ExchangeOrder) =
     asyncResult {
         // find best price for our order and see if it has changed.
         // if it hasn't keep waiting till max retry time       
+        let referencePrice = order.Price
         let! price = determineOrderPrice' exchange signalCommand
         let priceChanged = price <> referencePrice
-        if not priceChanged && (signalCommand.RequestDateTime - DateTime.UtcNow) > maxRetryTime
+        if not priceChanged && (DateTime.UtcNow - order.CreatedTime) < maxRetryTime
         then
             // wait for a bit and check again
             do! Async.Sleep 5000 
-            return! (waitForPriceMovementOrMaxTime exchange signalCommand referencePrice)
+            return! (waitForPriceMovementOrMaxTime exchange signalCommand order)
         else if priceChanged
         then
             return PriceMoved
@@ -304,7 +305,21 @@ let rec executeOrdersForCommand
         use _ = LogContext.PushProperty("CommandId", signalCommand.Id)
         use _ = LogContext.PushProperty("SignalId", signalCommand.SignalId)
         use _ = LogContext.PushProperty("Exchange", exchange.GetType().Name)
-
+        (*
+           Exit when
+            - max attempts reached
+            - max wait time for the order reached
+            - order filled
+            - max slippage reached
+           Waiting for order fill
+            - price check from order book
+            - check order status
+            - wait
+                - exit when order filled 
+                - price moved
+                - max wait time for max time reached
+            - Count as new attempt, if order is not filled
+        *)
         if attempt > maxAttempts // TODO move the slippage and other exist conditions here
         then 
             Log.Warning("Done retrying {MaxAttempts} times. Giving up on signal command {originalSignalCommand}...",
@@ -336,7 +351,7 @@ let rec executeOrdersForCommand
                 return (filledOrder' :: ordersSoFar)
             | _ ->
 
-                let! waitResult = waitForPriceMovementOrMaxTime exchange signalCommand newOrder.Price
+                let! waitResult = waitForPriceMovementOrMaxTime exchange signalCommand updatedOrder
                 match waitResult with
                 | MaxWaitTimeReached ->
                     // do a final check
