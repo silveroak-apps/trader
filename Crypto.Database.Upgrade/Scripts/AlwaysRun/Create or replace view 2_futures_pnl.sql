@@ -14,8 +14,8 @@ select fp.*,
 		else 0
 	end as pnl_percent,
 	case
-		when position_type = 'LONG' then coalesce (executed_buy_qty, 0) - coalesce (executed_sell_qty, 0)
-		when position_type = 'SHORT' then coalesce (executed_sell_qty, 0) - coalesce (executed_buy_qty, 0)
+		when fs2.position_type = 'LONG' then coalesce (executed_buy_qty, 0) - coalesce (executed_sell_qty, 0)
+		when fs2.position_type = 'SHORT' then coalesce (executed_sell_qty, 0) - coalesce (executed_buy_qty, 0)
 		else -1
 	end AS position_size
 from futures_positions fp
