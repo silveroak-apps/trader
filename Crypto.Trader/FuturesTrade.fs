@@ -13,18 +13,6 @@ open DbTypes
 open Types
 open Trader.Exchanges
 
-let private updateOrderWith (o: OrderInfo) (statusReason: string) (exo: ExchangeOrder) = 
-        let (OrderId oid) = o.OrderId
-        { exo with
-            Status = string o.Status
-            StatusReason = statusReason
-            ExchangeOrderId = string oid
-            ExchangeOrderIdSecondary = string o.ClientOrderId
-            UpdatedTime = DateTime.UtcNow
-            ExecutedQty = o.ExecutedQuantity / 1M<qty>
-            ExecutedPrice = o.Price / 1M<price>
-        }
-
 let private findOrderSide (positionSide: PositionSide) (signalAction: SignalAction) = 
     match positionSide, signalAction with
     | LONG, OPEN      -> BUY  |> Ok
@@ -39,7 +27,7 @@ let private findOrderSide (positionSide: PositionSide) (signalAction: SignalActi
 
     | _, _            -> Result.Error <| exn (sprintf "Unsupported positionType: %A, signalAction: %A" positionSide signalAction)
 
-let determineOrderPrice' (exchange: IExchange) (symbol: Symbol) (positionSide: PositionSide) (orderSide: OrderSide) = 
+let determineOrderBookPrice' (exchange: IExchange) (symbol: Symbol) (positionSide: PositionSide) (orderSide: OrderSide) = 
     asyncResult {
         let! orderBook = exchange.GetOrderBookCurrentPrice symbol
         // reduce potential loss due to spread
@@ -58,7 +46,7 @@ let determineOrderPrice' (exchange: IExchange) (symbol: Symbol) (positionSide: P
     |> AsyncResult.catch id
 
 type private OrderPriceAndSlippage = {
-    OrderPrice: decimal
+    OrderBookPrice: decimal
     SlippageFromCommand: decimal
 }
 
@@ -68,39 +56,40 @@ let calcSlippage (orderSide: OrderSide) orderBookPrice desiredPrice =
     | SELL -> ( desiredPrice - orderBookPrice ) * 100M / desiredPrice
     | _    ->  0M // not relevant won't happen :/
 
-let private determineOrderPrice (exchange: IExchange) (s: FuturesSignalCommandView) =
+let private determineOrderBookPrice (exchange: IExchange) (s: FuturesSignalCommandView) =
     asyncResult {
         let positionSide = PositionSide.FromString s.PositionType
         let! orderSide = findOrderSide positionSide (SignalAction.FromString s.Action)
-        let! price = determineOrderPrice' exchange (Symbol s.Symbol) positionSide orderSide
+        let! price = determineOrderBookPrice' exchange (Symbol s.Symbol) positionSide orderSide
         let slippage = calcSlippage orderSide price s.Price
         return {
-            OrderPrice = price
+            OrderBookPrice = price
             SlippageFromCommand = slippage
         }
     }
 
-let toExchangeOrder (signalCommand: FuturesSignalCommandView) = 
+let toExchangeOrder (signalCommand: FuturesSignalCommandView) (o: OrderInfo) = 
     let orderSide = findOrderSide (PositionSide.FromString signalCommand.PositionType) (SignalAction.FromString signalCommand.Action)
+    let (OrderId oid) = o.OrderId
     Result.map (fun os ->
             {
                 ExchangeOrder.CreatedTime = DateTime.UtcNow
                 Id = 0L // to be assigned by the data store
-                Status = "READY"
-                StatusReason = "About to place Order"
+                Status = string o.Status
+                StatusReason = "Placed Order"
                 Symbol = string signalCommand.Symbol
-                Price = signalCommand.Price
+                Price =  o.Price / 1M<price>
                 OriginalQty = signalCommand.Quantity
-                ExchangeOrderIdSecondary = string signalCommand.SignalId
+                ExchangeOrderIdSecondary = string o.ClientOrderId
                 SignalId = signalCommand.SignalId
                 SignalCommandId = signalCommand.Id
                 UpdatedTime = DateTime.UtcNow
                 ExchangeId = signalCommand.ExchangeId
                 OrderSide = string os
                 LastTradeId = 0L
-                ExchangeOrderId = sprintf "TBD-%s" (DateTimeOffset.UtcNow.ToString("yyyy-MMM-ddTHH:mm:ss.fff")) // for uniqueness in the db
-                ExecutedPrice = 0M // the order is not yet executed - this should be updated by trade status updates
-                ExecutedQty = 0M
+                ExchangeOrderId = string oid
+                ExecutedPrice = o.Price / 1M<price> 
+                ExecutedQty = o.ExecutedQuantity / 1M<qty>
                 FeeAmount = 0M // initially we've not executed anything - so no fees yet
                 FeeCurrency = "" // nothing is executed yet. so we dont know what this is.
             }
@@ -144,9 +133,7 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) (bestOrderPri
         let! o = exchange.PlaceOrder orderInput |> AsyncResult.mapError mapOrderError
 
         let! exo = 
-            s
-            |> toExchangeOrder            
-            |> Result.map (updateOrderWith o "Placed order")
+            toExchangeOrder s o
 
         return exo
     } |> AsyncResult.catch id
@@ -280,7 +267,7 @@ let rec private waitForPriceMovementOrMaxTime (waitInterval: TimeSpan) (maxRetry
             // find best price for our order and see if it has changed.
             // if it hasn't keep waiting till max retry time       
             let referencePrice = order.Price
-            let! ops = determineOrderPrice exchange signalCommand
+            let! ops = determineOrderBookPrice exchange signalCommand
             
             let positionSide = PositionSide.FromString signalCommand.PositionType
             let signalAction = SignalAction.FromString signalCommand.Action
@@ -288,10 +275,11 @@ let rec private waitForPriceMovementOrMaxTime (waitInterval: TimeSpan) (maxRetry
 
             let priceChangedUnfavourably = 
                 match orderSide with
-                | BUY -> ops.OrderPrice > referencePrice
-                | SELL -> ops.OrderPrice < referencePrice
+                | BUY -> ops.OrderBookPrice > referencePrice
+                | SELL -> ops.OrderBookPrice < referencePrice
                 | _ -> false
-
+            
+            Log.Debug("DEBUG: Order Book Price {OrderBookPrice}, Reference (Order) Price {ReferencePrice}",ops.OrderBookPrice, referencePrice)
             if not priceChangedUnfavourably && (DateTime.UtcNow - order.CreatedTime) < maxRetryTime
             then
                 
@@ -343,7 +331,7 @@ let rec executeOrdersForCommand
         // first, we need to find out how much more qty to place an order for:
         let maybeLatestOrder = ordersSoFar |> List.tryHead
         let! commandWithRemainingQty = getUpdatedCommandWithRemainingQty getPositionSizeFromDataStore ordersSoFar signalCommand
-        let! ops = determineOrderPrice exchange signalCommand
+        let! ops = determineOrderBookPrice exchange signalCommand
         
         // exit conditions
         let slippageCrossed = ops.SlippageFromCommand > maxSlippage && signalCommand.Action = "OPEN"
@@ -374,7 +362,7 @@ let rec executeOrdersForCommand
             then Log.Warning("Not Placing any further orders for command {Command}. Signal suggested price: {SignalSuggestedPrice}. Order request price: {OrderRequestPrice} as slippage crossed {Slippage}",
                     signalCommand,
                     signalCommand.Price,
-                    ops.OrderPrice,
+                    ops.OrderBookPrice,
                     ops.SlippageFromCommand)
 
             if maxAttemptsCompleted
@@ -387,7 +375,7 @@ let rec executeOrdersForCommand
         else
             Log.Information ("Starting executeOrder attempt: {Attempt}/{MaxAttempts} for command {Command}",  attempt, maxAttempts, signalCommand)
 
-            let! exchangeOrder = placeOrderWithRetryOnError exchange commandWithRemainingQty ops.OrderPrice
+            let! exchangeOrder = placeOrderWithRetryOnError exchange commandWithRemainingQty ops.OrderBookPrice
             let! newOrder = saveOrder exchangeOrder
 
             Log.Information("Saved new order: {InternalOrderId}. {Order}", newOrder.Id, newOrder)
