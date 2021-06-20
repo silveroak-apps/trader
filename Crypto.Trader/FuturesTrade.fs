@@ -494,23 +494,20 @@ let private mkTradeAgent
                         
                         *)
 
-                        let! result =
-                            asyncResult {
-                                let! exchange = (lookupExchange (ExchangeId exchangeId) |> Result.mapError exn)
-                                let! orders = executeOrdersForCommand exchange saveOrder getPositionSize maxSlippage [] cancellationDelay totalWaitTime maxAttempts attemptCount s
-                                let executedQty = getFilledQty orders
-                                let signalCommandStatus =
-                                    if executedQty > 0M
-                                    then SignalCommandStatus.SUCCESS
-                                    else SignalCommandStatus.FAILED
-                                do! completeSignalCommands [(SignalCommandId s.Id)] signalCommandStatus
-                            }
-
-                        match result with
-                        | Result.Error ex ->
-                            Log.Error(ex, "Error processing command: {Command} for signal: {SignalId}", s, s.SignalId)
-                        | _ -> ()
-
+                        asyncResult {
+                            let! exchange = (lookupExchange (ExchangeId exchangeId) |> Result.mapError exn)
+                            let! orders = executeOrdersForCommand exchange saveOrder getPositionSize maxSlippage [] cancellationDelay totalWaitTime maxAttempts attemptCount s
+                            let executedQty = getFilledQty orders
+                            let signalCommandStatus =
+                                if executedQty > 0M
+                                then SignalCommandStatus.SUCCESS
+                                else SignalCommandStatus.FAILED
+                            do! completeSignalCommands [(SignalCommandId s.Id)] signalCommandStatus
+                        }
+                        |> AsyncResult.mapError (fun ex -> Log.Error(ex, "Error processing command: {Command} for signal: {SignalId}", s, s.SignalId))
+                        |> Async.Ignore
+                        |> Async.Start
+                        
                     else
                         Log.Warning ("{Command} for {SignalId} has already been processed. Skipping", s, s.SignalId)
 
