@@ -119,7 +119,7 @@ let queryOrderStatus (o: OrderQueryInfo) =
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
-                coinMClient.OrderQueryAsync (symbol, sOrderId)
+                coinMClient.OrderQueryAsync (sOrderId, symbol)
             | USDT -> 
                 usdtClient.LinearOrderQueryAsync (symbol, sOrderId) 
 
