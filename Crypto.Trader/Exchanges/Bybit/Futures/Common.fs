@@ -96,7 +96,7 @@ let getOrderBookCurrentPrice (Symbol s) : Async<Result<Types.OrderBookTickerInfo
 let usdtSymbols =
    dict [
         (Symbol "BTCUSDT",  { Multiplier = 1 })
-     //   (Symbol "ETHUSDT",  { Multiplier = 1 })
+        (Symbol "ETHUSDT",  { Multiplier = 1 })
      //   (Symbol "DOGEUSDT", { Multiplier = 1 })
         // (Symbol "LTCUSDT", { Multiplier = 1 })
         // (Symbol "LINKUSDT", { Multiplier = 1 })
@@ -108,8 +108,8 @@ let usdtSymbols =
 
 let coinMSymbols =
    dict [
-        (Symbol "BTCUSD", { Multiplier = 1 })
+        //(Symbol "BTCUSD", { Multiplier = 1 })
         // (Symbol "ETHUSD", { Multiplier = 1 })
-        // (Symbol "EOSUSD", { Multiplier = 1 })
+         (Symbol "EOSUSD", { Multiplier = 1 })
         // (Symbol "XRPUSD", { Multiplier = 1 })
    ]
