@@ -509,7 +509,7 @@ let private mkTradeAgent
                         |> Async.Start
                         
                     else
-                        Log.Warning ("{Command} for {SignalId} has already been processed. Skipping", s, s.SignalId)
+                        Log.Warning ("Command {CommandId} for signal {SignalId} has already been processed. Skipping ...", s.Id, s.SignalId)
 
                     replyCh.Reply()
                 with e ->
