@@ -151,6 +151,30 @@ let private savePositions (ps: PositionAnalysis seq) =
             positions.[key] <- updatedPosition
         )
 
+let private removePositions (ps: PositionAnalysis seq) = 
+    ps
+    |> Seq.map (fun p -> makePositionKey p.Symbol p.PositionSide)
+    |> Seq.iter (positions.Remove >> ignore)
+
+let private removePositionsNotOnExchange (positionsOnExchange: PositionAnalysis seq) =
+    let key p = makePositionKey p.Symbol p.PositionSide
+    let lookup = 
+        positionsOnExchange
+        |> Seq.map (fun p -> (key p, p))
+        |> Seq.groupBy fst
+        |> Seq.map (fun (k, ps) -> (k, ps |> Seq.head |> snd))
+        |> dict
+
+    let notOnExchange (p: PositionAnalysis) =
+        not <| lookup.ContainsKey (key p)
+
+    let positionsToRemove =
+        positions.Values
+        |> Seq.filter notOnExchange
+        |> Seq.toList
+    
+    removePositions positionsToRemove
+
 let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
     let key = makePositionKey p.Symbol p.Side
     let found, pos = positions.TryGetValue key
@@ -282,9 +306,7 @@ let private cleanUpStoppedPositions () =
         |> Seq.filter (fun p -> p.IsStoppedOut)
         |> Seq.toList
     
-    positionsToRemove
-    |> Seq.map (fun p -> makePositionKey p.Symbol p.PositionSide)
-    |> Seq.iter (fun key -> positions.Remove key |> ignore)
+    removePositions positionsToRemove
 
 let private refreshPositions (exchanges: IFuturesExchange seq) =
     exchanges
@@ -294,6 +316,7 @@ let private refreshPositions (exchanges: IFuturesExchange seq) =
             Log.Information ("Refreshing positions from {Exchange}", exchange.Name)
 
             let! exchangePositions = getPositionsFromExchange exchange None
+            removePositionsNotOnExchange exchangePositions
             savePositions exchangePositions |> ignore
 
             Log.Information "Now cleaning up old stopped out positions"
