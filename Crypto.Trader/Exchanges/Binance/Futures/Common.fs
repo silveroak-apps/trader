@@ -5,7 +5,6 @@ open Serilog
 open Binance.Net
 open Binance.ApiTypes
 
-// ugly: TODO get config from outside?
 let private cfg = appConfig.GetSection "Binance"
 
 let getApiKeyCfg () = 
