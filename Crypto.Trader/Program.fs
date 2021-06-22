@@ -4,6 +4,7 @@ open System
 open Serilog
 open FSharp.Control
 open Argu
+open Types
 
 let configureLogging () = 
     Log.Logger <- LoggerConfiguration()
@@ -26,6 +27,26 @@ let run processValidSignals placeRealOrders =
         let nSeconds = TimeSpan.FromSeconds 3.0
         startHeartbeat "Trader"
         repeatEvery nSeconds (fun _ -> processValidSignals placeRealOrders) "Trader" // buy and sell
+
+
+let testMain _ =
+    let orderInput : Types.OrderInputInfo = {
+        OrderSide = Types.OrderSide.BUY
+        OrderType = Types.OrderType.LIMIT
+        PositionSide = Types.PositionSide.LONG
+        Price = 0.3M<price>
+        Quantity = 10M<qty>
+        SignalId = 1212332L
+        Symbol = Symbol "DOGEUSDT"
+        SignalCommandId = 12332445223L
+    }
+    let order : Types.OrderQueryInfo = {
+        Symbol  = Symbol "DOGEUSDT"
+        OrderId = OrderId "11317795-6571-46a3-a05b-1537f8ffcf4b"
+    }
+    //Bybit.Futures.Trade.placeOrder orderInput |> Async.RunSynchronously |> ignore
+    Bybit.Futures.Trade.cancelOrder order |> Async.RunSynchronously |> ignore
+    0
 
 [<EntryPoint>]
 let main (argv: string[]) =
@@ -56,12 +77,10 @@ let main (argv: string[]) =
         // start analysers
         Strategies.FuturesPositionAnalyser.trackPositions
             Trader.Exchanges.knownExchanges.Values
-            Trader.Exchanges.allSymbols
         |> Async.Start
 
         Strategies.FuturesKLineAnalyser.startAnalysis
             Trader.Exchanges.knownExchanges.Values
-            Trader.Exchanges.allSymbols
         |> Async.Start
 
         WebApi.run placeRealOrders // this will block
@@ -73,3 +92,4 @@ let main (argv: string[]) =
         Log.CloseAndFlush()
         Async.Sleep 500 |> Async.RunSynchronously // just to be sure logs are all flushed
         -999
+

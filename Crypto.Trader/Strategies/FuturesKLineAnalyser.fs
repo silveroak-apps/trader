@@ -8,6 +8,7 @@ open Strategies.Common
 open Types
 open System.Diagnostics
 open System.Collections.Concurrent
+open Serilog.Context
 
 type private CandleKey = {
     ExchangeId: ExchangeId
@@ -242,6 +243,7 @@ let private analyseHACandles (exchangeId: ExchangeId) (symbol: Symbol) =
 let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> Async<unit>) (nameForLogging: string)  =
     async {
         try
+            use _ = LogContext.PushProperty("Function", nameForLogging)
             let sw = Stopwatch.StartNew ()
             do! fn ()
             sw.Stop ()
@@ -249,13 +251,14 @@ let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> 
         with e -> Log.Warning (e, "Error running function {TimerFunctionName} on timer. Continuing next time...", nameForLogging)
 
         let interval = intervalFn()
-        Log.Debug ("Waiting for {Interval} before another KLine fetch", interval)
+        Log.Verbose ("Waiting for {Interval} before another KLine fetch", interval)
         do! Async.Sleep (int interval.TotalMilliseconds)
         do! repeatEveryInterval intervalFn fn nameForLogging 
     }
 
-let startAnalysis (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
-    Seq.allPairs exchanges symbols
+let startAnalysis (exchanges: IFuturesExchange seq) =
+    exchanges
+    |> Seq.collect (fun exchange -> exchange.GetSupportedSymbols().Keys |> Seq.map (fun s -> (exchange, s)))
     |> Seq.map (fun (exchange, symbol) ->
             let intervalFn () =
                 let candleKey = {
@@ -268,7 +271,7 @@ let startAnalysis (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
                     TimeSpan.FromSeconds <| float (60 - secondsToMinuteBoundary + 1)
                 | _ -> TimeSpan.FromSeconds 1.0
 
-            repeatEveryInterval intervalFn (fun () -> analyseHACandles exchange.Id symbol) "FuturesKLineAnalyser"
+            repeatEveryInterval intervalFn (fun () -> analyseHACandles exchange.Id symbol) (sprintf "FuturesKLineAnalyser-%s-%s" exchange.Name (symbol.ToString()))
         )
     |> Async.Parallel
     |> Async.Ignore

@@ -4,14 +4,12 @@ open Binance.Net
 open Binance.Net.Objects.Futures.FuturesData
 
 open System
-open Binance.ApiTypes
 open Types
 open Binance.Net.Interfaces.SubClients.Futures
 open Serilog
 
+open Exchanges.Common
 open Binance.Futures.Common
-
-type FuturesMode = USDT | COINM
 
 let private getClient futuresMode =
     let c = getBaseClient ()
@@ -53,11 +51,6 @@ let private toOrderInfoResult (orderData: BinanceFuturesPlacedOrder) =
                                 AvgPrice = orderData.AvgPrice |}
     } |> Ok
 
-let private getFuturesMode (symbol: string) =
-    if symbol.EndsWith("usdt", StringComparison.OrdinalIgnoreCase)
-    then USDT
-    else COINM
-
 let private orderTypeFrom (ot: OrderType) = 
     match ot with
     | LIMIT -> Enums.OrderType.Limit
@@ -65,7 +58,7 @@ let private orderTypeFrom (ot: OrderType) =
 
 let private placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
     let (Symbol s) = o.Symbol
-    let client = getClient (getFuturesMode s)
+    let client = getClient (getFuturesMode o.Symbol)
 
     let orderSide = 
         match o.OrderSide with
@@ -102,39 +95,13 @@ let private placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>
             if orderResponse.Success
             then toOrderInfoResult orderResponse.Data
             else 
-// TODO: We might need to handle some errors that can't be retried
-// and we need to indicate to the caller that they need to change the inputs
-(* for example:
--2018 BALANCE_NOT_SUFFICIENT
-    Balance is insufficient.
--2019 MARGIN_NOT_SUFFICIEN
-    Margin is insufficient.
--2020 UNABLE_TO_FILL
-    Unable to fill.
--2021 ORDER_WOULD_IMMEDIATELY_TRIGGER
-    Order would immediately trigger.
--2022 REDUCE_ONLY_REJECT
-    ReduceOnly Order is rejected.
--2023 USER_IN_LIQUIDATION
-    User in liquidation mode now.
--2024 POSITION_NOT_SUFFICIENT
-    Position is not sufficient.
--2025 MAX_OPEN_ORDER_EXCEEDED
-    Reach max open order limit.
--2026 REDUCE_ONLY_ORDER_TYPE_NOT_SUPPORTED
-    This OrderType is not supported when reduceOnly.
--2027 MAX_LEVERAGE_RATIO
-    Exceeded the maximum allowable position at current leverage.
--2028 MIN_LEVERAGE_RATIO
-    Leverage is smaller than permitted: insufficient margin balance.
-*) 
                 Error(OrderError(sprintf "%A: %s" orderResponse.Error.Code orderResponse.Error.Message))
         return result
     }
 
 let private queryOrderStatus (o: OrderQueryInfo) =
     let (Symbol symbol) = o.Symbol
-    let client = getClient (getFuturesMode symbol)
+    let client = getClient (getFuturesMode o.Symbol)
     let (OrderId sOrderId) = o.OrderId
 
     let parsed, orderId = Int64.TryParse sOrderId
@@ -154,7 +121,7 @@ let private queryOrderStatus (o: OrderQueryInfo) =
 
 let private cancelOrder (o: OrderQueryInfo) =
     let (Symbol symbol) = o.Symbol
-    let client = getClient (getFuturesMode symbol)
+    let client = getClient (getFuturesMode o.Symbol)
     let (OrderId sOrderId) = o.OrderId
 
     let parsed, orderId = Int64.TryParse sOrderId
@@ -175,7 +142,7 @@ let private getOrderBookCurrentPrice (Symbol s) =
     // COIN-M vs USDT futures
     // and I didn't bother to write an abstraction over it.
     async {
-        let futuresMode = getFuturesMode s
+        let futuresMode = getFuturesMode (Symbol s)
         match futuresMode with
         | USDT ->
             let! bookResponse = client.FuturesUsdt.Market.GetBookPricesAsync(s) |> Async.AwaitTask
@@ -224,12 +191,14 @@ let private getOrderBookCurrentPrice (Symbol s) =
                         ) 
     }
  
-let private getPositions (symbolFilter: string option) =
+let private exchangeName = "BinanceFutures"
+
+let private getPositions (symbolFilter: Symbol option) =
     async {
         let client = getBaseClient()
         let! result =
             match symbolFilter with
-            | Some s ->
+            | Some (Symbol s) ->
                 if s.EndsWith "USDT"
                 then PositionListener.getUsdtPositionsFromBinanceAPI client.FuturesUsdt symbolFilter
                 else PositionListener.getCoinPositionsFromBinanceAPI client.FuturesCoin symbolFilter
@@ -248,14 +217,18 @@ let getExchange() = {
         member __.PlaceOrder o = placeOrder o
         member __.QueryOrder o = queryOrderStatus o
         member __.CancelOrder o = cancelOrder o
-        member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice (Symbol s)
+        member __.GetOrderBookCurrentPrice s = getOrderBookCurrentPrice s
         member __.Id = Types.ExchangeId ExchangeId
-        member __.Name = "BinanceFutures"
+        member __.Name = exchangeName
 
         member __.GetFuturesPositions symbolFilter = getPositions symbolFilter
-        member __.TrackPositions (agent, symbols) = async { 
-                let started = PositionListener.trackPositions agent symbols
+        member __.TrackPositions (agent) = async { 
+                let started = PositionListener.trackPositions agent
                 Log.Information ("Started Binance position tracker : {Success}", started)
-                return () 
+                return ()
             }
+        member __.GetSupportedSymbols () =
+            Seq.concat [Common.usdtSymbols; Common.coinMSymbols]
+            |> Seq.map (fun kv -> (kv.Key, kv.Value))
+            |> dict
     }
