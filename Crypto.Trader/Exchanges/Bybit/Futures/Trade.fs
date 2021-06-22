@@ -159,10 +159,11 @@ let cancelOrder (o: OrderQueryInfo) =
         return 
             if orderResponse.RetCode ?= 0M
             then Ok true
+            elif orderResponse.RetCode ?= 130010M // order not exists or too late to cancel: happens when order was already filled by the time cancellation was attempted
+            then Ok false
             else Error (sprintf "%A: %s" orderResponse.RetCode orderResponse.RetMsg)
     }
     
-
 let getExchange () =
     { new IFuturesExchange with
         member __.Id = Types.ExchangeId Common.ExchangeId
