@@ -188,31 +188,30 @@ type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
         let previousSLValuesWithLeverage =
             (List.replicate 22 None)
 
-        // test data matches story 127 as of 04/Jun/2021 (this commit)
         let expectedSLValues =
             [
-                -3.00m;
-                -3.00m;
-                -3.00m;
-                -0.65m;
-                -0.50m;
-                -0.37m;
-                -0.25m;
-                 0.07m;
-                 0.16m;
-                 0.25m;
-                 0.42m;
-                 0.65m;
-                 1.00m;
-                 1.20m;
-                 1.62m;
-                 2.20m;
-                 3.55m;
-                 4.85m;
-                 6.13m;
-                 7.40m;
-                 8.66m;
-                 9.92m;
+                -2.50m;
+                -2.50m;
+                -2.50m;
+                -2.50m;
+                -2.50m;
+                -2.50m;
+                -2.50m;
+                -2.50m;
+                -2.50m;
+                -2.50m;
+                -2.50m;
+                -2.50m;
+                 0.33m;
+                 0.59m;
+                 1.12m;
+                 1.80m;
+                 3.28m;
+                 4.65m;
+                 5.97m;
+                 7.27m;
+                 8.55m;
+                 9.82m;
             ]
 
         runTest leverage gainValuesWithLeverage previousSLValuesWithLeverage expectedSLValues
@@ -251,31 +250,30 @@ type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
         let previousSLValuesWithLeverage =
             List.replicate 22 (Some -3m)
 
-        // test data matches story 127 as of 04/Jun/2021 (this commit)
         let expectedSLValues =
             [
                 -3.00m;
                 -3.00m;
                 -3.00m;
-                -0.65m;
-                -0.50m;
-                -0.37m;
-                -0.25m;
-                 0.07m;
-                 0.16m;
-                 0.25m;
-                 0.42m;
-                 0.65m;
-                 1.00m;
-                 1.20m;
-                 1.62m;
-                 2.20m;
-                 3.55m;
-                 4.85m;
-                 6.13m;
-                 7.40m;
-                 8.66m;
-                 9.92m;
+                -3.00m;
+                -3.00m;
+                -3.00m;
+                -3.00m;
+                -3.00m;
+                -3.00m;
+                -3.00m;
+                -3.00m;
+                -3.00m;
+                 0.33m;
+                 0.59m;
+                 1.12m;
+                 1.80m;
+                 3.28m;
+                 4.65m;
+                 5.97m;
+                 7.27m;
+                 8.55m;
+                 9.82m;
             ]
 
         runTest leverage gainValuesWithLeverage previousSLValuesWithLeverage expectedSLValues
