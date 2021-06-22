@@ -58,3 +58,29 @@ let getSocketClient () =
     socketClient
 
 let ExchangeId = 4L
+
+// TODO move this to config / db?
+// UnitName is what the 'quantity' refers to in the API calls.
+// From there we derive a USD value - if it is USDT, we leave it as is.
+// If it is 'CONT' or contracts, we can convert to USD
+
+let usdtSymbols  = 
+    dict [ 
+        (Symbol "BNBUSDT",   { Types.ContractDetails.Multiplier = 1 })
+        (Symbol "BTCUSDT",   { Multiplier = 1 })
+        (Symbol "ETHUSDT",   { Multiplier = 1 })
+        (Symbol "ADAUSDT",   { Multiplier = 1 })
+        (Symbol "DOTUSDT",   { Multiplier = 1 })
+        (Symbol "DOGEUSDT",  { Multiplier = 1 })
+        (Symbol "MATICUSDT", { Multiplier = 1 })
+        (Symbol "LUNAUSDT",  { Multiplier = 1 })
+    ]
+
+let coinMSymbols  = 
+    dict [ 
+        (Symbol "BNBUSD",   { Types.ContractDetails.Multiplier = 10 })
+        (Symbol "BTCUSD",   { Multiplier = 100 })
+        (Symbol "ETHUSD",   { Multiplier = 10 })
+        (Symbol "ADAUSD",   { Multiplier = 10 })
+        (Symbol "DOTUSD",   { Multiplier = 10 })
+    ]

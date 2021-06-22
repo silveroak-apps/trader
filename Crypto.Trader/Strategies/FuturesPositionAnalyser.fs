@@ -11,10 +11,10 @@ open FsToolkit.ErrorHandling
 open Types
 open Trader.Exchanges
 open Strategies.Common
-
+open Serilog.Context
 type PositionKey = PositionKey of string
 
-type private PositionAnalysis = {
+type PositionAnalysis = {
     ExchangeId: ExchangeId
     EntryPrice: decimal
     Symbol: Symbol
@@ -57,7 +57,7 @@ let private closeSignal (exchangeName: string) (position: PositionAnalysis) (pri
                 TimeFrame = 1 // hardcode for now
                 Exchange = exchangeName
                 Category = "stopLoss"
-                Contracts = Math.Abs(position.PositionAmount)
+                Contracts = 0M //Math.Abs(position.PositionAmount)  ignoring it for now as strategy handles the position information
             }
 
             let! result = raiseMarketEvent marketEvent
@@ -78,17 +78,19 @@ let private printPositionSummary () =
     |> Seq.iter (fun pos -> 
             match pos.CalculatedPnl, pos.CalculatedPnlPercent with
             // find the units of qty: so we know what the pnl is in.
+            // TODO fix this
             | Some pnl, Some pnlP ->
-                let symbol = pos.Symbol.ToString()
-                let found, symbolUnits = coinMSymbols.TryGetValue symbol
-                let pnlUsd, unitName = 
-                    if found then (pnl / decimal symbolUnits.Multiplier), "USD"
-                    else pnl, "USDT"
+                // let symbol = pos.Symbol.ToString()
+                // let found, symbolUnits = coinMSymbols.TryGetValue symbol
+                // let pnlUsd, unitName = 
+                //     if found then (pnl / decimal symbolUnits.Multiplier), "USD"
+                //     else 
+                //pnl, "???"
 
                 Log.Information("{Symbol} [{PositionSide}]: {Pnl:0.0000} {UnitName} [{PnlPercent:0.00} %]. Stop: {StopLossPercent:0.00} %", 
                     pos.Symbol.ToString(), 
                     pos.PositionSide,
-                    pnlUsd, unitName, pnlP,
+                    pnl, "???", pnlP,
                     Option.defaultValue -9999M pos.StoplossPnlPercentValue) 
             | _ -> ()
         )
@@ -149,6 +151,30 @@ let private savePositions (ps: PositionAnalysis seq) =
             positions.[key] <- updatedPosition
         )
 
+let private removePositions (ps: PositionAnalysis seq) = 
+    ps
+    |> Seq.map (fun p -> makePositionKey p.Symbol p.PositionSide)
+    |> Seq.iter (positions.Remove >> ignore)
+
+let private removePositionsNotOnExchange (positionsOnExchange: PositionAnalysis seq) =
+    let key p = makePositionKey p.Symbol p.PositionSide
+    let lookup = 
+        positionsOnExchange
+        |> Seq.map (fun p -> (key p, p))
+        |> Seq.groupBy fst
+        |> Seq.map (fun (k, ps) -> (k, ps |> Seq.head |> snd))
+        |> dict
+
+    let notOnExchange (p: PositionAnalysis) =
+        not <| lookup.ContainsKey (key p)
+
+    let positionsToRemove =
+        positions.Values
+        |> Seq.filter notOnExchange
+        |> Seq.toList
+    
+    removePositions positionsToRemove
+
 let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
     let key = makePositionKey p.Symbol p.Side
     let found, pos = positions.TryGetValue key
@@ -177,25 +203,32 @@ let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
             positions.Remove key |> ignore
      }
 
-let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal option) =
-    let minStopLoss = -0.5M * decimal position.Leverage // % - TODO move to config
-    let previousStopLossValue = position.StoplossPnlPercentValue
-    let gain = Option.defaultValue 0M gainOpt
+// input magic numbers for calculating stoploss from config: see story 127 // % - TODO move to config
+let minStopLoss = -0.5M
+let stopLossTriggerLevel = 0.25M
+let stopLossFactor = 0.07M
 
-    (*
-        With a leverage of 5x, we get:
+let calculateStopLoss (position: PositionAnalysis) (currentGain: decimal option) =
 
-            minStopLoss = -5%
-            trailingTakeProfitLevel = 4% (this is where we start trailing)
-            trailingDistance = 1% (so, if gain/profit hits 4% and then goes down to 3%, we close!)
-            breakEvenTrigger = 1.65% (this is fixed stoploss once we break even: i.e once we break even, we should never close below this ???)
-            expectedCostsForTradeCycle (breakEvenStopLoss) = 1.1%
-    *)
+    // inputs to calc
+    let leverage = position.Leverage
+    let prevGain = position.CalculatedPnlPercent
+    let prevSL   = position.StoplossPnlPercentValue
 
-    let trailingTakeProfitLevel = 0.5M * decimal position.Leverage // % - TODO move to config
-    let trailingDistance = 0.1M * decimal position.Leverage // % - TODO move to config
+    let withoutLeverageUsingDefault0 opt =
+        opt
+        |> Option.map (fun v -> v / leverage)
+        |> Option.defaultValue 0M
 
-    let breakEvenTrigger = 0.3M * decimal position.Leverage // % - TODO move to config
+    // calculated non-leveraged inputs
+    let previousGainWithoutLeverage = prevGain |> withoutLeverageUsingDefault0  
+    let gainWithoutLeverage = currentGain |> withoutLeverageUsingDefault0
+    let previousSLWithoutLeverage = prevSL |> Option.map (fun v -> v / leverage)
+
+    let toLeveragedValue (d: decimal option) =
+        let round2 (d: decimal) = Math.Round (d, 2)   
+        d |> Option.map (fun sl -> (sl * leverage) |> round2)
+
     let stopLossOfAtleast prevStopLoss newStopLoss = 
         // by this time we've already got a stop loss.
         // we only ever change stoploss upward
@@ -206,27 +239,30 @@ let private calculateStopLoss (position: PositionAnalysis) (gainOpt: decimal opt
         ]
         |> Some
 
-    match previousStopLossValue with
+    let calcSL v = 
+        let newSL = gainWithoutLeverage - (stopLossFactor / gainWithoutLeverage)
+        stopLossOfAtleast v newSL
+
+    match previousSLWithoutLeverage with 
+    | None when gainWithoutLeverage <> 0M &&
+                gainWithoutLeverage > stopLossTriggerLevel ->
+        calcSL minStopLoss
+
     | None ->
-        Some minStopLoss // always start with the minstoploss    
+        Some minStopLoss // start with the minstoploss
 
-    | Some v when gain >= trailingTakeProfitLevel ->
-        let newStopLoss = gain - trailingDistance
-        let sl = stopLossOfAtleast v newStopLoss
-        sl
-
-    | Some v when gain >= breakEvenTrigger ->
-    //     let slippageAllowance = Strategies.Common.tracePriceSlippageAllowance
-    //     let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
-    //     let expectedCostsForTradeCycle = (slippageAllowance + (tradeFeesPercent * decimal position.Leverage)) * 2M
-         let newStopLoss = 0.25M //expectedCostsForTradeCycle // we need to recover costs to breakEven
-         let sl = stopLossOfAtleast v newStopLoss
-         sl
+    | Some v when gainWithoutLeverage <> 0M && 
+                  gainWithoutLeverage > stopLossTriggerLevel && 
+                  gainWithoutLeverage > previousGainWithoutLeverage ->
+        calcSL v
 
     | v -> v // no change in stop loss
 
+    |> toLeveragedValue
+
+/// Calculates net PNL _after_ fees considering leverage.
 let private calculatePnl (position: PositionAnalysis) (price: OrderBookTickerInfo) =
-    let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercent
+    let tradeFeesPercent = Strategies.Common.futuresTradeFeesPercentFor position.ExchangeId
     let qty = decimal <| Math.Abs(position.PositionAmount)
     let pnl = 
         match position.PositionSide with
@@ -260,8 +296,9 @@ let private printPositions (positions: PositionAnalysis seq) =
     positions
     |> Seq.filter (fun pos -> pos.PositionAmount <> 0m)
     |> Seq.iter (fun pos ->
-            Log.Information("Position: {@Position}", pos) 
+            Log.Information("Position: {Position}", pos) 
         )
+    Log.Information("We have {PositionSize} open positions", positions |> Seq.length)    
 
 let private cleanUpStoppedPositions () =
     let positionsToRemove =
@@ -269,24 +306,23 @@ let private cleanUpStoppedPositions () =
         |> Seq.filter (fun p -> p.IsStoppedOut)
         |> Seq.toList
     
-    positionsToRemove
-    |> Seq.map (fun p -> makePositionKey p.Symbol p.PositionSide)
-    |> Seq.iter (fun key -> positions.Remove key |> ignore)
+    removePositions positionsToRemove
 
-let private refreshPositions (exchange: IFuturesExchange seq) =
-    exchange
+let private refreshPositions (exchanges: IFuturesExchange seq) =
+    exchanges
     |> Seq.map (fun exchange ->
-        async {
+        asyncResult {
+            use _ = LogContext.PushProperty("Exchange", exchange.Name)
             Log.Information ("Refreshing positions from {Exchange}", exchange.Name)
-            
-            let! positions = getPositionsFromExchange exchange None
-            savePositions positions
+
+            let! exchangePositions = getPositionsFromExchange exchange None
+            removePositionsNotOnExchange exchangePositions
+            savePositions exchangePositions |> ignore
 
             Log.Information "Now cleaning up old stopped out positions"
             cleanUpStoppedPositions ()
 
-            Log.Information ("We have {PositionCount} positions now.", positions |> Seq.length)
-            printPositions positions
+            printPositions positions.Values
         })
     |> Async.Parallel
     |> Async.Ignore
@@ -321,15 +357,6 @@ let private updatePositionPnl (exchange: IFuturesExchange) (price: OrderBookTick
                     do! Async.Sleep (45 * 1000) // 45 seconds
                     do! refreshPositions [exchange]
                 }
-                |> Async.Catch
-                |> Async.map (fun c ->
-                        match c with
-                        | Choice2Of2 ex -> 
-                            Log.Error(ex, "Error trying to close position: {Error}", ex.Message)
-                            c
-                        | _ -> c
-                    )
-                |> Async.Ignore
                 |> Async.Start
         )
 
@@ -385,7 +412,7 @@ let private mkTradeAgent (exchanges: IFuturesExchange seq) =
         messageLoop()
     )
 
-let trackPositions (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
+let trackPositions (exchanges: IFuturesExchange seq) =
     use _x = LogContext.PushProperty ("Futures", true)
 
     Log.Information "Starting socket client for Binance futures user data stream"
@@ -404,7 +431,6 @@ let trackPositions (exchanges: IFuturesExchange seq) (symbols: Symbol seq) =
     repeatEvery (TimeSpan.FromSeconds(15.0)) (fun () -> refreshPositions exchanges) "PositionRefresh" |> Async.Start
 
     exchanges
-    |> Seq.map (fun exchange -> exchange.TrackPositions (tradeAgent, symbols))
+    |> Seq.map (fun exchange -> exchange.TrackPositions tradeAgent)
     |> Async.Parallel
     |> Async.Ignore
-

@@ -34,6 +34,7 @@ type ByBitOBResponse = IO.Swagger.Model.OrderBookBase
 type ByBitOBResultResponse = IO.Swagger.Model.OderBookRes
 
 let ExchangeId = 5L
+let ExchangeName = "ByBitFutures"
 
 let cfg = appConfig.GetSection "ByBit"
 
@@ -45,7 +46,7 @@ let config =
     let apiKey = getApiKeyCfg () 
     let config = BybitConfig.Default
     config.AddApiKey ("api_key", apiKey.Key)
-    config.ApiSecret <-  apiKey.Secret
+    config.AddApiKey ("api_secret", apiKey.Secret)
     config
 
 let coinMClient = BybitCoinMApi(config)   
@@ -81,7 +82,34 @@ let getOrderBookCurrentPrice (Symbol s) : Async<Result<Types.OrderBookTickerInfo
                     Result.Ok ticker
 
             elif obResponse.RetCode ?= 0M
-            then Result.Error (sprintf "Error getting orderbook from ByBit: '%s'" obResponse.RetMsg)
-            else Result.Error (sprintf "No results for Bybit orderbook API call")
+            then Result.Error (sprintf "No results for Bybit orderbook API call for symbol: %s" s)
+            else Result.Error (sprintf "Error getting orderbook from ByBit for symbol (%s): [%A] %s" s obResponse.RetCode obResponse.RetMsg)
         return result
     }
+
+// TODO move this to config / db?
+// UnitName is what the 'quantity' refers to in the API calls.
+// From there we derive a USD value - if it is USDT, we leave it as is.
+// If it is 'CONT' or contracts, we can convert to USD
+
+
+let usdtSymbols =
+   dict [
+        (Symbol "BTCUSDT",  { Multiplier = 1 })
+        (Symbol "ETHUSDT",  { Multiplier = 1 })
+     //   (Symbol "DOGEUSDT", { Multiplier = 1 })
+        // (Symbol "LTCUSDT", { Multiplier = 1 })
+        // (Symbol "LINKUSDT", { Multiplier = 1 })
+        // (Symbol "ADAUSDT", { Multiplier = 1 })
+        // (Symbol "DOTUSDT", { Multiplier = 1 })
+        // (Symbol "UNIUSDT", { Multiplier = 1 })
+        // (Symbol "AAVEUSDT", { Multiplier = 1 })
+   ]
+
+let coinMSymbols =
+   dict [
+        //(Symbol "BTCUSD", { Multiplier = 1 })
+        // (Symbol "ETHUSD", { Multiplier = 1 })
+         (Symbol "EOSUSD", { Multiplier = 1 })
+        // (Symbol "XRPUSD", { Multiplier = 1 })
+   ]

@@ -10,7 +10,7 @@ open Serilog.Context
 open Serilog
 open System.Collections.Concurrent
 
-type BybitLinearPositionListResultBase = IO.Swagger.Model.LinearPositionListResultBase
+type BybitLinearPositionListResultBase = IO.Swagger.Model.LinearPositionList
 type BybitLinearPosition = IO.Swagger.Model.LinearPositionListResult
 
 type BybitPositionListResultBase = IO.Swagger.Model.Position
@@ -35,12 +35,16 @@ let toExchangePosition (p: BybitLinearPosition) : Types.ExchangePosition =
     {
         Types.ExchangePosition.MarginType = FuturesMarginType.UNKNOWN // for now the lib doesn't expose this. need to fix
         Leverage = p.Leverage.GetValueOrDefault () |> decimal
-        Side = PositionSide.FromString p.Side
+        Side = 
+            match p.Side with 
+            | "Buy"     -> PositionSide.LONG
+            | "Sell"    -> PositionSide.SHORT
+            | _         -> PositionSide.NOT_APPLICABLE
         Symbol = Symbol p.Symbol
         EntryPrice = p.EntryPrice.GetValueOrDefault () |> decimal
         MarkPrice = 0M // doesn't look like the api returns this
         Amount = p.Size.GetValueOrDefault () |> decimal
-        RealisedPnL = p.CumRealisedPnl.GetValueOrDefault() |> decimal
+        RealisedPnL = p.CumRealisedPnl.GetValueOrDefault() |> decimal        
         UnRealisedPnL = 0M // looks like this isn't returned in the response
         IsolatedMargin = p.PositionMargin.GetValueOrDefault() |> decimal // TODO find out if this is right?
         LiquidationPrice = p.LiqPrice.GetValueOrDefault() |> decimal
@@ -50,7 +54,11 @@ let private toExchangePosition' (p: BybitPosition) : Types.ExchangePosition =
     {
         Types.ExchangePosition.MarginType = FuturesMarginType.UNKNOWN // for now the lib doesn't expose this. need to fix
         Leverage = p.Leverage.GetValueOrDefault () |> decimal
-        Side = PositionSide.FromString p.Side
+        Side = 
+            match p.Side with 
+            | "Buy"     -> PositionSide.LONG
+            | "Sell"    -> PositionSide.SHORT
+            | _         -> PositionSide.NOT_APPLICABLE
         Symbol = Symbol p.Symbol
         EntryPrice = p.EntryPrice.GetValueOrDefault () |> decimal
         MarkPrice = 0M // doesn't look like the api returns this
@@ -61,46 +69,36 @@ let private toExchangePosition' (p: BybitPosition) : Types.ExchangePosition =
         LiquidationPrice = p.LiqPrice.GetValueOrDefault() |> decimal
     }
 
-let getUSDTPositionsFromBybitAPI (client: BybitUSDTPositionsApi) (symbolFilter: Symbol option) =
+let private getUSDTPositionsFromBybitAPI (client: BybitUSDTPositionsApi) (symbolFilter: Symbol option) =
     async {
         
-        let! responseObj =
+        let! response =
             match symbolFilter with
-            | Some (Symbol s) -> client.LinearPositionsMyPositionAsync s
-            | None            -> client.LinearPositionsMyPositionAsync ()
+            | Some (Symbol s) -> client.GetActivePositionsAsync s
+            | None            -> client.GetActivePositionsAsync ()
             |> Async.AwaitTask
         
-        let jobj = responseObj :?> Newtonsoft.Json.Linq.JObject
-        let response = jobj.ToObject<BybitLinearPositionListResultBase>()
+
         if response.RetCode ?= 0M
         then
-            return Ok (response.Result |> Seq.map toExchangePosition)
+            return Ok (response.GetResult() |> Seq.map toExchangePosition)
         else
             return Result.Error (sprintf "Error getting USDT positions from Bybit: [%A]%s" response.RetCode response.RetMsg)
     }
 
-let getCoinMPositionsFromBybitAPI (client: BybitCoinMPositionsApi) (symbolFilter: Symbol option) =
+let private getCoinMPositionsFromBybitAPI (client: BybitCoinMPositionsApi) (symbolFilter: Symbol option) =
     async {
         
-        let! responseObj =
+        let! response =
             match symbolFilter with
-            | Some (Symbol s) -> client.PositionsMyPositionAsync s
-            | None            -> client.PositionsMyPositionAsync ()
+            | Some (Symbol s) -> client.GetActivePositionsAsync s
+            | None            -> client.GetActivePositionsAsync ()
             |> Async.AwaitTask
 
-        let jobj = responseObj :?> Newtonsoft.Json.Linq.JObject
-        let response = jobj.ToObject<BybitPositionListResultBase>()
         if response.RetCode ?= 0M
         then
             let result = 
-                match symbolFilter with
-                | None -> 
-                    let jPositions = response.Result :?> Newtonsoft.Json.Linq.JArray
-                    jPositions.ToObject<BybitPosition seq>()
-                | _    -> 
-                    let jPos = response.Result :?> Newtonsoft.Json.Linq.JObject
-                    Seq.singleton (jPos.ToObject<BybitPosition>())
-                
+                response.GetResult()
                 |> Seq.map toExchangePosition'
                 |> Ok
             return result
@@ -130,10 +128,17 @@ let getPositions (symbolFilter: Symbol option): Async<Result<seq<ExchangePositio
 
 let private getLatestPrices (symbols: Symbol seq) =    
     symbols
-    |> Seq.map Common.getOrderBookCurrentPrice
+    |> Seq.map (fun (Symbol s) -> 
+        async {
+            try
+                let! ob = Common.getOrderBookCurrentPrice (Symbol s)
+                return ob
+            with ex ->
+                return Error <| sprintf "Error getting latest prices from orderbook for symbol %s from %s: %s" s Common.ExchangeName (ex.ToString())
+        })   
     |> Async.Parallel
 
-let trackPositions (agent: MailboxProcessor<PositionCommand>) (symbols: Symbol seq) =
+let trackPositions (agent: MailboxProcessor<PositionCommand>) =
 
     // Ideally, we should subscribe to websocket(s), but for now:
     // just do some polling
@@ -143,13 +148,18 @@ let trackPositions (agent: MailboxProcessor<PositionCommand>) (symbols: Symbol s
 
     let fetchPriceUpdatesAndNotify () =
         asyncResult {
+
+            let symbols = 
+                [Common.coinMSymbols.Keys; Common.usdtSymbols.Keys]
+                |> Seq.concat 
+
             let! prices = getLatestPrices symbols
             prices
-            |> Seq.iter (fun pr ->
-                match pr with
-                | Error s -> Log.Error("Error getting price from Bybit futures: {ErrorMsg}", s)
+            |> Seq.iter (fun r ->
+                match r with
                 | Ok orderBookTicker -> 
                     agent.Post (FuturesBookPrice (Types.ExchangeId Common.ExchangeId, orderBookTicker))
+                | Error s -> Log.Warning ("Error getting orderbook prices from Bybit. Will try again later. Error: {Error}", s)
             )
         }
         |> Async.Ignore

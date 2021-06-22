@@ -4,10 +4,12 @@ module Process
 open System
 open Serilog
 open System.Diagnostics
+open Serilog.Context
 
 let rec repeatEveryIntervalWhile (shouldContinue : unit -> bool) (interval: TimeSpan) (fn: unit -> Async<unit>) (nameForLogging: string)  =
     async {
         try
+            use _ = LogContext.PushProperty("Function", nameForLogging)
             let sw = Stopwatch.StartNew ()
             do! fn ()
             sw.Stop ()
@@ -22,18 +24,18 @@ let rec repeatEveryIntervalWhile (shouldContinue : unit -> bool) (interval: Time
 
 let rec repeatEvery = repeatEveryIntervalWhile (fun () -> true)
 
-let rec private retryForErrorResult<'TIn, 'TOut, 'TError> attempt maxCount (delay: TimeSpan option) (input: 'TIn) (fn: 'TIn -> Async<Result<'TOut, 'TError>>) =
+let rec private retryForErrorResult<'TIn, 'TOut, 'TError> attempt maxCount (delay: TimeSpan option) (functionName: string) (input: 'TIn) (fn: 'TIn -> Async<Result<'TOut, 'TError>>) =
     async {
         let! result = fn input
         match result with
         | Error e ->
-            Log.Warning("Error running function with retry. Attempt {attempt}/{maxCount}. {Error}", attempt, maxCount, e)
+            Log.Warning("Error running function {Function} with retry. Attempt {attempt}/{maxCount}. {Error}", functionName, attempt, maxCount, e)
             if attempt < maxCount
             then 
                 match delay with
                 | Some ts -> do! Async.Sleep (ts.TotalMilliseconds |> int)
                 | None -> ()
-                let! result = (retryForErrorResult<'TIn, 'TOut, 'TError> (attempt + 1) maxCount delay input fn)
+                let! result = (retryForErrorResult<'TIn, 'TOut, 'TError> (attempt + 1) maxCount delay functionName input fn)
                 return result
             else 
                 return result

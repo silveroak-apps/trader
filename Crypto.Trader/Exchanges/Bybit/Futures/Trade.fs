@@ -63,6 +63,11 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
         let (Symbol symbol) = o.Symbol
         let timeInForce = "PostOnly" // For maker fees
         let orderLinkId = sprintf "%d_%d" o.SignalCommandId (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+        let reduceOnly = 
+            match o.PositionSide, o.OrderSide with
+            | PositionSide.LONG, OrderSide.SELL     -> true
+            | PositionSide.SHORT, OrderSide.BUY     -> true
+            | _,_                                   -> false
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
@@ -73,15 +78,10 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
                     o.Quantity / 1M<qty> |> int,
                     timeInForce,
                     price = float (o.Price / 1M<price>),
+                    reduceOnly = reduceOnly,
                     orderLinkId = orderLinkId
                 )
             | USDT ->
-                let reduceOnly = 
-                    match o.PositionSide, o.OrderSide with
-                    | PositionSide.LONG, OrderSide.SELL     -> true
-                    | PositionSide.SHORT, OrderSide.BUY     -> true
-                    | _,_                                   -> false
-
                 usdtClient.LinearOrderNewAsync(
                     symbol, 
                     orderSideFrom o.OrderSide,
@@ -119,7 +119,7 @@ let queryOrderStatus (o: OrderQueryInfo) =
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
-                coinMClient.OrderQueryAsync (symbol, sOrderId)
+                coinMClient.OrderQueryAsync (sOrderId, symbol)
             | USDT -> 
                 usdtClient.LinearOrderQueryAsync (symbol, sOrderId) 
 
@@ -166,7 +166,7 @@ let cancelOrder (o: OrderQueryInfo) =
 let getExchange () =
     { new IFuturesExchange with
         member __.Id = Types.ExchangeId Common.ExchangeId
-        member __.Name = "ByBitFutures"
+        member __.Name = Common.ExchangeName
 
         member __.CancelOrder o = cancelOrder o
         member __.PlaceOrder o = placeOrder o
@@ -175,5 +175,9 @@ let getExchange () =
         member __.GetOrderBookCurrentPrice s = Bybit.Futures.Common.getOrderBookCurrentPrice s
 
         member __.GetFuturesPositions symbolFilter = PositionListener.getPositions symbolFilter
-        member __.TrackPositions(agent, symbols) = PositionListener.trackPositions agent symbols 
+        member __.TrackPositions agent = PositionListener.trackPositions agent
+        member __.GetSupportedSymbols () =
+            Seq.concat [Common.usdtSymbols; Common.coinMSymbols]
+            |> Seq.map (fun kv -> (kv.Key, kv.Value))
+            |> dict
     }
