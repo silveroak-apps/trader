@@ -74,6 +74,7 @@ type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
         // most values don't matter for this test
         {
             Strategies.FuturesPositionAnalyser.PositionAnalysis.IsolatedMargin = 0M
+            ExchangeId = Types.ExchangeId 1L
             EntryPrice = 0M
             Symbol = Symbol "does not matter"
             Leverage = leverage
