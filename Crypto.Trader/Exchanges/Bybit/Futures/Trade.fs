@@ -68,27 +68,45 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
             | PositionSide.LONG, OrderSide.SELL     -> true
             | PositionSide.SHORT, OrderSide.BUY     -> true
             | _,_                                   -> false
+        
+        let orderSide = orderSideFrom o.OrderSide
+        let orderType = orderTypeFrom o.OrderType
+        let price = float (o.Price / 1M<price>)
+        
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
+                let qty = int <| o.Quantity / 1M<qty>
+                
+                Log.Debug("Bybit placeOrder (signalCommand: {CommandId}): {OrderSide}, {OrderType}, {Qty} @ {Price}", 
+                    o.SignalCommandId,
+                    orderSide, orderType, qty, price, reduceOnly)
+
                 coinMClient.OrderNewAsync(
-                    orderSideFrom o.OrderSide,
+                    orderSide,
                     symbol,
-                    orderTypeFrom o.OrderType,
-                    o.Quantity / 1M<qty> |> int,
+                    orderType,
+                    qty,
                     timeInForce,
-                    price = float (o.Price / 1M<price>),
+                    price = price,
                     reduceOnly = reduceOnly,
                     orderLinkId = orderLinkId
                 )
             | USDT ->
+
+                let qty = float <| o.Quantity / 1M<qty>
+
+                Log.Debug("Bybit placeOrder (signalCommand: {CommandId}): {OrderSide}, {OrderType}, {Qty} @ {Price}, reduceOnly: {ReduceOnly}.", 
+                    o.SignalCommandId,
+                    orderSide, orderType, qty, price, reduceOnly)
+
                 usdtClient.LinearOrderNewAsync(
                     symbol, 
                     orderSideFrom o.OrderSide,
                     orderTypeFrom o.OrderType,
                     timeInForce,
-                    float <| (o.Quantity / 1M<qty>),
-                    float (o.Price / 1M<price>),
+                    qty,
+                    price,
                     reduceOnly = reduceOnly, 
                     closeOnTrigger = false,
                     orderLinkId = orderLinkId
