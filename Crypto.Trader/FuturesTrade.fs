@@ -147,7 +147,7 @@ let private delay = TimeSpan.FromSeconds(1.0)
 let placeOrderWithRetryOnError (exchange: IExchange) (signalCmd: FuturesSignalCommandView) (bestOrderPrice: decimal) =
     // retry 'retryCount' times, in quick succession if there is an error placing an order
     let placeOrder' () = placeOrder exchange signalCmd bestOrderPrice
-    placeOrder' |> withRetryOnErrorResult retryCount delay "placeOrderWithRetryOnError" ()
+    placeOrder' |> withRetryOnErrorResult retryCount delay "placeOrderWithRetryOnError" () isAlwaysRetryable
 
 let queryOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo) = 
     let queryOrder () =
@@ -158,14 +158,14 @@ let queryOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo
             with
             | e -> return (Result.Error e)
         }
-    queryOrder |> withRetryOnErrorResult retryCount delay "queryOrderWithRetryOnError" ()
+    queryOrder |> withRetryOnErrorResult retryCount delay "queryOrderWithRetryOnError" () isAlwaysRetryable
 
 let cancelOrderWithRetryOnError (exchange: IExchange) (orderQuery: OrderQueryInfo) =
     let cancelOrder () =
         exchange.CancelOrder orderQuery
         |> AsyncResult.mapError exn
         |> AsyncResult.catch id
-    cancelOrder |> withRetryOnErrorResult retryCount delay "cancelOrderWithRetryOnError" ()
+    cancelOrder |> withRetryOnErrorResult retryCount delay "cancelOrderWithRetryOnError" () isAlwaysRetryable
 
 let private getLatestOrderState exchange order =
     let waitMillis = 500.0
@@ -504,7 +504,18 @@ let private mkTradeAgent
                                 else SignalCommandStatus.FAILED
                             do! completeSignalCommands [(SignalCommandId s.Id)] signalCommandStatus
                         }
-                        |> AsyncResult.mapError (fun ex -> Log.Error(ex, "Error processing command: {Command} for signal: {SignalId}", s, s.SignalId))
+                        |> AsyncResult.mapError (fun ex -> 
+                                async {
+                                    Log.Error(ex, "Error processing command: {Command} for signal: {SignalId}", s, s.SignalId)
+                                    let! result = completeSignalCommands [(SignalCommandId s.Id)] SignalCommandStatus.FAILED
+                                    match result with
+                                    | Result.Error ex' -> 
+                                        Log.Error (ex', "Error marking command: {CommandId} as failed for signal: {SignalId}", s.Id, s.SignalId)
+                                    | _ -> ()
+                                } 
+                                |> Async.Ignore
+                                |> Async.Start
+                            )
                         |> Async.Ignore
                         |> Async.Start
                         

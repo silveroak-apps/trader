@@ -98,11 +98,11 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
         
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
-        Log.Debug("response: {Response}", orderResponse)
+        Log.Debug("Bybit placeOrder response: {Response}", orderResponse)
         let result = 
-            if orderResponse.RetCode = Nullable 0M
+            if orderResponse.RetCode ?= 0M
             then 
-                let jResultObj      = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
+                let jResultObj    = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
                 let orderResponse = jResultObj.ToObject<ByBitOrderResponseResult>()
                 toOrderInfoResult orderResponse
             else 
@@ -126,10 +126,10 @@ let queryOrderStatus (o: OrderQueryInfo) =
         let! response = responseTask |> Async.AwaitTask
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
-        Log.Debug("Bybit query response: {Response}", orderResponse)
-        if Nullable.Equals(orderResponse.RetCode, 0M)
+        Log.Debug("Bybit queryOrder response: {Response}", orderResponse)
+        if orderResponse.RetCode ?= 0M
         then 
-            let jResultObj      = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
+            let jResultObj    = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
             let orderResponse = jResultObj.ToObject<ByBitOrderResponseResult>()
             return mapOrderStatus {| 
                                     Status = orderResponse.OrderStatus
@@ -155,11 +155,14 @@ let cancelOrder (o: OrderQueryInfo) =
         let jobj = cancelResponse :?> Newtonsoft.Json.Linq.JObject
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
 
-        Log.Debug("Bybit cancel order response: {Response}", orderResponse)
+        Log.Debug("Bybit cancelOrder response: {Response}", orderResponse)
         return 
             if orderResponse.RetCode ?= 0M
             then Ok true
             elif orderResponse.RetCode ?= 130010M // order not exists or too late to cancel: happens when order was already filled by the time cancellation was attempted
+              || orderResponse.RetCode ?= 130037M // order already cancelled (usdt)
+              || orderResponse.RetCode ?= 30032M  // already filled or cancelled (coin-m)
+              || orderResponse.RetCode ?= 30037M  // already cancelled (coin-m)
             then Ok false
             else Error (sprintf "%A: %s" orderResponse.RetCode orderResponse.RetMsg)
     }

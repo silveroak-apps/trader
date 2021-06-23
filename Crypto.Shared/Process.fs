@@ -24,21 +24,26 @@ let rec repeatEveryIntervalWhile (shouldContinue : unit -> bool) (interval: Time
 
 let rec repeatEvery = repeatEveryIntervalWhile (fun () -> true)
 
-let rec private retryForErrorResult<'TIn, 'TOut, 'TError> attempt maxCount (delay: TimeSpan option) (functionName: string) (input: 'TIn) (fn: 'TIn -> Async<Result<'TOut, 'TError>>) =
+let rec private retryForErrorResult<'TIn, 'TOut, 'TError> attempt maxCount (delay: TimeSpan option) (functionName: string) (input: 'TIn) (isRetryable: 'TError -> bool) (fn: 'TIn -> Async<Result<'TOut, 'TError>>) =
     async {
         let! result = fn input
         match result with
         | Error e ->
-            Log.Warning("Error running function {Function} with retry. Attempt {attempt}/{maxCount}. {Error}", functionName, attempt, maxCount, e)
-            if attempt < maxCount
-            then 
-                match delay with
-                | Some ts -> do! Async.Sleep (ts.TotalMilliseconds |> int)
-                | None -> ()
-                let! result = (retryForErrorResult<'TIn, 'TOut, 'TError> (attempt + 1) maxCount delay functionName input fn)
+            if isRetryable e 
+            then
+                Log.Warning("Error running function {Function} with retry. Attempt {attempt}/{maxCount}. {Error}", functionName, attempt, maxCount, e)
+                if attempt < maxCount
+                then 
+                    match delay with
+                    | Some ts -> do! Async.Sleep (ts.TotalMilliseconds |> int)
+                    | None -> ()
+                    let! result = (retryForErrorResult<'TIn, 'TOut, 'TError> (attempt + 1) maxCount delay functionName input isRetryable fn)
+                    return result
+                else 
+                    return result
+            else
                 return result
-            else 
-                return result
+
         | _ -> return result
     }
 
@@ -74,6 +79,9 @@ let withRetry<'T> count = retry'<unit, 'T> 0 count (Some <| TimeSpan.FromSeconds
 let withRetry'<'TIn, 'TOut> count = retry'<'TIn, 'TOut> 0 count (Some <| TimeSpan.FromSeconds 1.0) shouldAlwaysRetryForException
 
 let withRetryOnErrorResult<'TIn, 'TOut, 'TError> count delay = retryForErrorResult<'TIn, 'TOut, 'TError> 0 count (Some delay)
+
+let isAlwaysRetryable _ = true
+let isNeverRetryable _ = false
 
 let startHeartbeat name =
     repeatEvery (TimeSpan.FromSeconds(5.0)) (fun _ -> Db.Common.saveHeartbeat name) (sprintf "Heartbeat - %s" name)
