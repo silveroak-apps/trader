@@ -3,7 +3,7 @@ WORKDIR /app
 
 COPY . ./
 RUN dotnet restore
-RUN dotnet test --filter FullyQualifiedName\!~IntegrationTest
+#RUN dotnet test --filter FullyQualifiedName\!~IntegrationTest
 RUN dotnet publish -c Release -o out/Crypto.Trader --no-restore Crypto.Trader/Crypto.Trader.fsproj
 RUN dotnet publish -c Release -o out/Crypto.Database.Upgrade --no-restore Crypto.Database.Upgrade/Crypto.Database.Upgrade.fsproj
 
