@@ -167,25 +167,24 @@ let private removePositions (ps: PositionAnalysis seq) =
     |> Seq.map makePositionKey
     |> Seq.iter (positions.Remove >> ignore)
 
-let private removePositionsNotOnExchange (positionsOnExchange: PositionAnalysis seq) =
-    () // temporarily disabling while we figure out what's wrong with this
-    // let key p = makePositionKey p
-    // let lookup = 
-    //     positionsOnExchange
-    //     |> Seq.map (fun p -> (key p, p))
-    //     |> Seq.groupBy fst
-    //     |> Seq.map (fun (k, ps) -> (k, ps |> Seq.head |> snd))
-    //     |> dict
+let private removePositionsNotOnExchange (exchangeId: ExchangeId) (positionsOnExchange: PositionAnalysis seq) =
+    let key p = makePositionKey p
+    let lookup = 
+        positionsOnExchange
+        |> Seq.map (fun p -> (key p, p))
+        |> Seq.groupBy fst
+        |> Seq.map (fun (k, ps) -> (k, ps |> Seq.head |> snd))
+        |> dict
 
-    // let notOnExchange (p: PositionAnalysis) =
-    //     not <| lookup.ContainsKey (key p)
+    let notOnExchange (p: PositionAnalysis) =
+        p.ExchangeId = exchangeId && not <| lookup.ContainsKey (key p)
 
-    // let positionsToRemove =
-    //     positions.Values
-    //     |> Seq.filter notOnExchange
-    //     |> Seq.toList
+    let positionsToRemove =
+        positions.Values
+        |> Seq.filter notOnExchange
+        |> Seq.toList
     
-    // removePositions positionsToRemove
+    removePositions positionsToRemove
 
 let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
     let key = makePositionKey' p
@@ -330,7 +329,7 @@ let private refreshPositions (exchanges: IFuturesExchange seq) =
 
             let! exchangePositions = getPositionsFromExchange exchange None
             Log.Information ("Found exisiting positions from exchange: {ExchangePositions}. Existing in-memory positions: {Positions}", exchangePositions, positions.Values |> Seq.toList)
-            removePositionsNotOnExchange exchangePositions
+            removePositionsNotOnExchange exchange.Id exchangePositions
             Log.Information ("In-memory positions after cleaning up: {Positions}", positions.Values |> Seq.toList)
             savePositions exchangePositions |> ignore
 
