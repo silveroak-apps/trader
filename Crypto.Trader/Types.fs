@@ -111,6 +111,11 @@ type OrderBookTickerInfo = {
     AskQty: decimal
 }
 
+type SignalId = SignalId of int64
+type SignalCommandId = SignalCommandId of int64
+type ExchangeOrderInternalId = ExchangeOrderInternalId of int64
+type ExchangeId = ExchangeId of int64
+
 type ExchangePosition = {
     Leverage: decimal
     Side: PositionSide
@@ -123,12 +128,8 @@ type ExchangePosition = {
     UnRealisedPnL: decimal
     IsolatedMargin: decimal
     LiquidationPrice: decimal
+    ExchangeId: ExchangeId 
 }
-
-type SignalId = SignalId of int64
-type SignalCommandId = SignalCommandId of int64
-type ExchangeOrderInternalId = ExchangeOrderInternalId of int64
-type ExchangeId = ExchangeId of int64
 
 type SignalAction = 
 | OPEN

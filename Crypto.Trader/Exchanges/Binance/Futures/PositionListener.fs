@@ -26,6 +26,7 @@ let getUsdtPositionsFromBinanceAPI (client: IBinanceClientFuturesUsdt) (symbol: 
                 positionResult.Data
                 |> Seq.filter (fun p -> p.PositionAmount <> 0m)
                 |> Seq.map (fun p -> {
+                        ExchangeId = Types.ExchangeId Binance.Futures.Common.ExchangeId
                         ExchangePosition.EntryPrice = p.EntryPrice
                         Symbol = Symbol p.Symbol
                         Leverage = decimal p.Leverage
@@ -60,6 +61,7 @@ let getCoinPositionsFromBinanceAPI (client: IBinanceClientFuturesCoin) (symbol: 
                 positionResult.Data
                 |> Seq.filter (fun p -> p.PositionAmount <> 0m)
                 |> Seq.map (fun p -> {
+                        ExchangeId = Types.ExchangeId Binance.Futures.Common.ExchangeId
                         ExchangePosition.EntryPrice = p.EntryPrice
                         Symbol = Symbol p.Symbol
                         Leverage = decimal p.Leverage
@@ -110,6 +112,7 @@ let private subscribeToUserStream (tradeAgent: MailboxProcessor<PositionCommand>
                                 let positions =
                                     accUpdate.UpdateData.Positions
                                     |> Seq.map (fun p -> {
+                                        ExchangeId = Types.ExchangeId Binance.Futures.Common.ExchangeId
                                         ExchangePosition.Amount = p.PositionAmount
                                         Leverage = 0M // TODO fetch or let the higher level flow determine it
                                         Side = PositionSide.FromString <| p.PositionSide.ToString()
