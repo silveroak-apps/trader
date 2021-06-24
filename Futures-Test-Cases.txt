@@ -35,4 +35,3 @@ Repeat test case 3 with BTCUSDTPERP symbol
 
 Test case 9: Combine diff symbols / COINM+USDT at the same time: [PASS]
 
-
