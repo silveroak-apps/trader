@@ -168,23 +168,24 @@ let private removePositions (ps: PositionAnalysis seq) =
     |> Seq.iter (positions.Remove >> ignore)
 
 let private removePositionsNotOnExchange (positionsOnExchange: PositionAnalysis seq) =
-    let key p = makePositionKey p
-    let lookup = 
-        positionsOnExchange
-        |> Seq.map (fun p -> (key p, p))
-        |> Seq.groupBy fst
-        |> Seq.map (fun (k, ps) -> (k, ps |> Seq.head |> snd))
-        |> dict
+    () // temporarily disabling while we figure out what's wrong with this
+    // let key p = makePositionKey p
+    // let lookup = 
+    //     positionsOnExchange
+    //     |> Seq.map (fun p -> (key p, p))
+    //     |> Seq.groupBy fst
+    //     |> Seq.map (fun (k, ps) -> (k, ps |> Seq.head |> snd))
+    //     |> dict
 
-    let notOnExchange (p: PositionAnalysis) =
-        not <| lookup.ContainsKey (key p)
+    // let notOnExchange (p: PositionAnalysis) =
+    //     not <| lookup.ContainsKey (key p)
 
-    let positionsToRemove =
-        positions.Values
-        |> Seq.filter notOnExchange
-        |> Seq.toList
+    // let positionsToRemove =
+    //     positions.Values
+    //     |> Seq.filter notOnExchange
+    //     |> Seq.toList
     
-    removePositions positionsToRemove
+    // removePositions positionsToRemove
 
 let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
     let key = makePositionKey' p
@@ -310,7 +311,7 @@ let private printPositions (positions: PositionAnalysis seq) =
     |> Seq.iter (fun pos ->
             Log.Information("Position: {Position}", pos) 
         )
-    Log.Information("We have {PositionSize} open positions: {Positions}", positions |> Seq.length, positions |> Seq.toList)    
+    Log.Information("We have {PositionCount} open positions: {Positions}", positions |> Seq.length, positions |> Seq.toList)    
 
 let private cleanUpStoppedPositions () =
     let positionsToRemove =
