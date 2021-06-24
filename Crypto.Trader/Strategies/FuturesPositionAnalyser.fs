@@ -164,7 +164,7 @@ let private savePositions (ps: PositionAnalysis seq) =
 
 let private removePositions (ps: PositionAnalysis seq) = 
     ps
-    |> Seq.map (fun p -> makePositionKey p)
+    |> Seq.map makePositionKey
     |> Seq.iter (positions.Remove >> ignore)
 
 let private removePositionsNotOnExchange (positionsOnExchange: PositionAnalysis seq) =
@@ -343,8 +343,8 @@ let private refreshPositions (exchanges: IFuturesExchange seq) =
 
 let private updatePositionPnl (exchange: IFuturesExchange) (price: OrderBookTickerInfo) =
     [ LONG; SHORT ]
-    |> List.map (makePositionKey'' exchange.Id price.Symbol)
-    |> List.map (fun key ->  (positions.TryGetValue key), key)
+    |> List.map ((makePositionKey'' exchange.Id price.Symbol) >>
+                 (fun key ->  (positions.TryGetValue key), key))
     |> List.filter (fun ((found, pos), _) -> found && not pos.IsStoppedOut)
     |> List.iter (fun ((_, position), key) -> 
             let pnl, pnlPercent = calculatePnl position price
@@ -403,7 +403,7 @@ let private mkTradeAgent (exchanges: IFuturesExchange seq) =
                                         positionUpdates
                                         |> Seq.map makePositionKey'
                                     )
-                                |> Seq.iter (fun pos -> positions.Remove pos |> ignore)
+                                |> Seq.iter (positions.Remove >> ignore)
 
                                 return ()
                             }
