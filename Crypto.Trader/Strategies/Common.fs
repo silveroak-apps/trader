@@ -23,7 +23,7 @@ type MarketEvent = {
 let private marketEventUrl = appConfig.GetSection "MarketEventUrl"
 let private marketEventApiKey = appConfig.GetSection "MarketEventApiKey"
 let private marketEventHttpClient = new HttpClient()
-let private jsonOptions = new JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.CamelCase)
+let private jsonOptions = JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.CamelCase)
 
 let raiseMarketEvent (marketEvent: MarketEvent) =
     async {

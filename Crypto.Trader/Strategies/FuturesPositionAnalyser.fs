@@ -164,10 +164,10 @@ let private savePositions (ps: PositionAnalysis seq) =
 
 let private removePositions (ps: PositionAnalysis seq) = 
     ps
-    |> Seq.map (fun p -> makePositionKey p)
+    |> Seq.map makePositionKey
     |> Seq.iter (positions.Remove >> ignore)
 
-let private removePositionsNotOnExchange (positionsOnExchange: PositionAnalysis seq) =
+let private removePositionsNotOnExchange (exchangeId: ExchangeId) (positionsOnExchange: PositionAnalysis seq) =
     let key p = makePositionKey p
     let lookup = 
         positionsOnExchange
@@ -177,7 +177,7 @@ let private removePositionsNotOnExchange (positionsOnExchange: PositionAnalysis 
         |> dict
 
     let notOnExchange (p: PositionAnalysis) =
-        not <| lookup.ContainsKey (key p)
+        p.ExchangeId = exchangeId && not <| lookup.ContainsKey (key p)
 
     let positionsToRemove =
         positions.Values
@@ -310,7 +310,7 @@ let private printPositions (positions: PositionAnalysis seq) =
     |> Seq.iter (fun pos ->
             Log.Information("Position: {Position}", pos) 
         )
-    Log.Information("We have {PositionSize} open positions: {Positions}", positions |> Seq.length, positions |> Seq.toList)    
+    Log.Information("We have {PositionCount} open positions: {Positions}", positions |> Seq.length, positions |> Seq.toList)    
 
 let private cleanUpStoppedPositions () =
     let positionsToRemove =
@@ -329,7 +329,7 @@ let private refreshPositions (exchanges: IFuturesExchange seq) =
 
             let! exchangePositions = getPositionsFromExchange exchange None
             Log.Information ("Found exisiting positions from exchange: {ExchangePositions}. Existing in-memory positions: {Positions}", exchangePositions, positions.Values |> Seq.toList)
-            removePositionsNotOnExchange exchangePositions
+            removePositionsNotOnExchange exchange.Id exchangePositions
             Log.Information ("In-memory positions after cleaning up: {Positions}", positions.Values |> Seq.toList)
             savePositions exchangePositions |> ignore
 
@@ -343,8 +343,8 @@ let private refreshPositions (exchanges: IFuturesExchange seq) =
 
 let private updatePositionPnl (exchange: IFuturesExchange) (price: OrderBookTickerInfo) =
     [ LONG; SHORT ]
-    |> List.map (makePositionKey'' exchange.Id price.Symbol)
-    |> List.map (fun key ->  (positions.TryGetValue key), key)
+    |> List.map ((makePositionKey'' exchange.Id price.Symbol) >>
+                 (fun key ->  (positions.TryGetValue key), key))
     |> List.filter (fun ((found, pos), _) -> found && not pos.IsStoppedOut)
     |> List.iter (fun ((_, position), key) -> 
             let pnl, pnlPercent = calculatePnl position price
@@ -403,7 +403,7 @@ let private mkTradeAgent (exchanges: IFuturesExchange seq) =
                                         positionUpdates
                                         |> Seq.map makePositionKey'
                                     )
-                                |> Seq.iter (fun pos -> positions.Remove pos |> ignore)
+                                |> Seq.iter (positions.Remove >> ignore)
 
                                 return ()
                             }
