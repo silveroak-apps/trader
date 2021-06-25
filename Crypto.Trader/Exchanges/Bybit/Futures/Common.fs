@@ -108,8 +108,8 @@ let usdtSymbols =
 
 let coinMSymbols =
    dict [
-        //(Symbol "BTCUSD", { Multiplier = 1 })
+        (Symbol "BTCUSD", { Multiplier = 1 })
         // (Symbol "ETHUSD", { Multiplier = 1 })
-         (Symbol "EOSUSD", { Multiplier = 1 })
+        //(Symbol "EOSUSD", { Multiplier = 1 })
         // (Symbol "XRPUSD", { Multiplier = 1 })
    ]
