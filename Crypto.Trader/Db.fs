@@ -292,6 +292,57 @@ let private saveOrder' (exo: ExchangeOrder) (t: TradeMode) =
         return orderId
     }
 
+let private getPosition' (ExchangeId exchangeId) (Symbol s) (p: PositionSide) =
+    async {
+        let getPositionsSql = 
+            "
+                SELECT signal_id as SignalId,
+                    symbol as Symbol,
+                    position_type as PositionType, 
+                    exchange_id as ExchangeId,
+                    strategy_pair_name as StrategyPairName, 
+                    signal_status as SignalStatus,
+                    position_status as PositionStatus, 
+                    executed_buy_qty as ExecutedBuyQty,
+                    pending_buy_qty as PendingBuyQty, 
+                    executed_sell_qty as ExecutedSellQty,
+                    pending_sell_qty as PendingSellQty, 
+                    open_commands_count as OpenCommandsCount,
+                    close_commands_count as CloseCommandsCount,
+                    pending_commands_count as PendingCommandsCount, 
+                    entry_price as EntryPrice,
+                    close_price as ClosePrice, 
+                    entry_time as EntryTime,
+                    exit_time as ExitTime, 
+                    pnl as Pnl,
+                    pnl_percent as PnlPercent,
+                    position_size as PositionSize
+                FROM futures_pnl
+                WHERE symbol = @Symbol 
+                    AND position_type = @PositionSide 
+                    AND exchange_id = @ExchangeId
+                    AND signal_status IN ('ACTIVE', 'CREATED', 'UNKNOWN')
+                ORDER BY signal_id DESC
+                LIMIT 1;
+            "
+        let! positions = 
+            getWithParam<FuturesPositionPnlView> getPositionsSql (
+                {|
+                    Symbol = s
+                    ExchangeId = exchangeId
+                    PositionSide = p
+                |} :> obj)
+        return (positions 
+                |> Seq.map (fun e -> 
+                        {  e with 
+                            EntryTime = mapNullable unspecToUtcKind e.EntryTime
+                            ExitTime = mapNullable unspecToUtcKind e.ExitTime
+                        }
+                    )
+                )
+                |> Seq.tryHead
+    }
+
 type private DbAgentCommand = 
     // Spot only
     | GetSignalsToBuyOrSell of AsyncReplyChannel<Signal seq>
@@ -301,6 +352,7 @@ type private DbAgentCommand =
     | GetFuturesSignalCommands of AsyncReplyChannel<FuturesSignalCommandView seq>
     | SetSignalCommandComplete  of SignalCommandId seq * SignalCommandStatus * AsyncReplyChannel<unit>
     | GetPositionSize of SignalId * AsyncReplyChannel<decimal>
+    | GetPosition of ExchangeId * Symbol * PositionSide * AsyncReplyChannel<FuturesPositionPnlView option>
     
     // Common 
     // Save order handles signal updates too :/
@@ -356,6 +408,11 @@ let private dbAgent =
                 | GetPositionSize (signalId, replyCh) ->
                     let! positionSize = getPositionSize' |> withRetry' 5 signalId
                     replyCh.Reply positionSize
+
+                | GetPosition (exchangeId, symbol, positionSide, replyCh) ->
+                    let! position = getPosition' exchangeId symbol |> withRetry' 5 positionSide
+                    replyCh.Reply position
+
             with 
                 | e ->
                     Log.Error (e, "Error handling db command: {DbCommand}", msg)
@@ -401,6 +458,15 @@ let getPositionSize (signalId: SignalId) =
     async {
         try
             let! result = dbAgent.PostAndAsyncReply (fun replyCh -> GetPositionSize (signalId, replyCh))
+            return Ok result
+        with
+            | e -> return Result.Error e
+    }
+
+let getPosition (exchangeId: ExchangeId) (symbol: Symbol) (positionSide: PositionSide) = 
+    async {
+        try
+            let! result = dbAgent.PostAndAsyncReply (fun replyCh -> GetPosition (exchangeId, symbol, positionSide, replyCh))
             return Ok result
         with
             | e -> return Result.Error e

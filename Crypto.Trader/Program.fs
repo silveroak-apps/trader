@@ -76,6 +76,7 @@ let main (argv: string[]) =
 
         // start analysers
         Strategies.FuturesPositionAnalyser.trackPositions
+            Db.getPosition
             Trader.Exchanges.knownExchanges.Values
         |> Async.Start
 

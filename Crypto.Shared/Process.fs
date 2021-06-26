@@ -8,13 +8,13 @@ open Serilog.Context
 
 let rec repeatEveryIntervalWhile (shouldContinue : unit -> bool) (interval: TimeSpan) (fn: unit -> Async<unit>) (nameForLogging: string)  =
     async {
+        use _ = LogContext.PushProperty("Function", nameForLogging)
         try
-            use _ = LogContext.PushProperty("Function", nameForLogging)
             let sw = Stopwatch.StartNew ()
             do! fn ()
             sw.Stop ()
-            Log.Verbose ("{TimerFunctionName} took {TimerFunctionDuration} milliseconds", nameForLogging, sw.Elapsed.TotalMilliseconds)
-        with e -> Log.Warning (e, "Error running function {TimerFunctionName} on timer. Continuing next time...", nameForLogging)
+            // Log.Verbose ("{Function} took {TimerFunctionDuration} milliseconds", nameForLogging, sw.Elapsed.TotalMilliseconds)
+        with e -> Log.Warning (e, "Error running function {Function} on timer. Continuing next time...", nameForLogging)
         
         do! Async.Sleep (int interval.TotalMilliseconds)
         
@@ -26,6 +26,7 @@ let rec repeatEvery = repeatEveryIntervalWhile (fun () -> true)
 
 let rec private retryForErrorResult<'TIn, 'TOut, 'TError> attempt maxCount (delay: TimeSpan option) (functionName: string) (input: 'TIn) (isRetryable: 'TError -> bool) (fn: 'TIn -> Async<Result<'TOut, 'TError>>) =
     async {
+        use _ = LogContext.PushProperty("Function", functionName)
         let! result = fn input
         match result with
         | Error e ->

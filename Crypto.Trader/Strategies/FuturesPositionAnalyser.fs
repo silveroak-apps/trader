@@ -11,7 +11,7 @@ open FsToolkit.ErrorHandling
 open Types
 open Trader.Exchanges
 open Strategies.Common
-open Serilog.Context
+open DbTypes
 type PositionKey = PositionKey of string
 
 type PositionAnalysis = {
@@ -32,7 +32,14 @@ type PositionAnalysis = {
     StoplossPnlPercentValue: decimal option // Stop loss expressed in terms of Pnl percent (not price)
     IsStoppedOut: bool
     CloseRaisedTime: DateTime option
+    PositionInDb: FuturesPositionPnlView option // corresponding position in db, if found
 }
+
+// alias
+type GetPositionsFromDataStore = ExchangeId -> Symbol -> PositionSide -> Async<Result<FuturesPositionPnlView option, exn>>
+
+let private maybeSignalId (pos: PositionAnalysis) = 
+    pos.PositionInDb |> Option.map (fun p -> p.SignalId |> string) |> Option.defaultValue "??"
 
 let private positions = new ConcurrentDictionary<PositionKey, PositionAnalysis>()
 
@@ -89,19 +96,15 @@ let private printPositionSummary () =
     |> Seq.iter (fun pos -> 
             match pos.CalculatedPnl, pos.CalculatedPnlPercent with
             // find the units of qty: so we know what the pnl is in.
-            // TODO fix this
+            // TODO fix this for COINM
             | Some pnl, Some pnlP ->
-                // let symbol = pos.Symbol.ToString()
-                // let found, symbolUnits = coinMSymbols.TryGetValue symbol
-                // let pnlUsd, unitName = 
-                //     if found then (pnl / decimal symbolUnits.Multiplier), "USD"
-                //     else 
-                //pnl, "???"
-
-                Log.Information("{Symbol} [{PositionSide}]: {Pnl:0.0000} {UnitName} [{PnlPercent:0.00} %]. Stop: {StopLossPercent:0.00} %", 
+                let (Symbol s) = pos.Symbol
+                let unitName = if s.EndsWith("USDT") then "USDT" else "???"
+                Log.Information("Signal: {SignalId} - {Symbol} [{PositionSide}]: {Pnl:0.0000} {UnitName} [{PnlPercent:0.00} %]. Stop: {StopLossPercent:0.00} %", 
+                    maybeSignalId pos,
                     pos.Symbol.ToString(), 
                     pos.PositionSide,
-                    pnl, "???", pnlP,
+                    pnl, unitName, pnlP,
                     Option.defaultValue -9999M pos.StoplossPnlPercentValue) 
             | _ -> ()
         )
@@ -134,7 +137,7 @@ let private getPositionsFromExchange (exchange: IFuturesExchange) (symbol: Symbo
                         IsStoppedOut = false
                         CloseRaisedTime = None
                         ExchangeId = exchange.Id
-                        // EntryTime we don't actually know - unless we query orders and guess / calculate over time :|
+                        PositionInDb = None
                     })
             | Result.Error s ->
                 Log.Error ("Error getting positions from {Exchange}: {Error}", exchange.Name, s)
@@ -143,9 +146,9 @@ let private getPositionsFromExchange (exchange: IFuturesExchange) (symbol: Symbo
         return positions
     }
 
-let private savePositions (ps: PositionAnalysis seq) = 
+let private savePositions (ps: (PositionAnalysis * FuturesPositionPnlView option) seq) = 
     ps 
-    |> Seq.iter (fun pos ->
+    |> Seq.iter (fun (pos, posInDb) ->
             let key = makePositionKey pos
             let found, existingPosition = positions.TryGetValue key
             let updatedPosition = 
@@ -156,6 +159,7 @@ let private savePositions (ps: PositionAnalysis seq) =
                             CalculatedPnlPercent = existingPosition.CalculatedPnlPercent
                             IsStoppedOut = false // reset
                             StoplossPnlPercentValue = existingPosition.StoplossPnlPercentValue
+                            PositionInDb = posInDb
                     }
                 else
                     pos
@@ -191,6 +195,8 @@ let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
     let found, pos = positions.TryGetValue key
     async {
         let! pos' =
+            // do we already know about this position in-memory?
+            // if so - just update the position in memory with the latest 
             match found, p.Symbol with
             | true, _ ->
                     async {
@@ -205,8 +211,9 @@ let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
                         })
                     }
             | false, s->
+                // we don't know about this position in memory: fetch the full details from the Exchange
                 getPositionsFromExchange exchange (Some s)
-                |> Async.map Seq.tryHead
+                |> Async.map Seq.tryHead // we expect to find only one position for a given Exchange, Symbol, PositionSide
         match pos' with
         | Some p -> positions.[key] <- p
         | None -> 
@@ -308,7 +315,8 @@ let private printPositions (positions: PositionAnalysis seq) =
     positions
     |> Seq.filter (fun pos -> pos.PositionAmount <> 0m)
     |> Seq.iter (fun pos ->
-            Log.Information("Position: {Position}", pos) 
+            let signalId = maybeSignalId pos
+            Log.Information("Signal: {SignalId} - Position: {Position}", signalId, pos) 
         )
     Log.Information("We have {PositionCount} open positions: {Positions}", positions |> Seq.length, positions |> Seq.toList)    
 
@@ -320,7 +328,9 @@ let private cleanUpStoppedPositions () =
     
     removePositions positionsToRemove
 
-let private refreshPositions (exchanges: IFuturesExchange seq) =
+let private refreshPositions (getPositionsFromDataStore: GetPositionsFromDataStore)
+    (exchanges: IFuturesExchange seq) =
+
     exchanges
     |> Seq.map (fun exchange ->
         asyncResult {
@@ -331,7 +341,31 @@ let private refreshPositions (exchanges: IFuturesExchange seq) =
             Log.Information ("Found exisiting positions from exchange: {ExchangePositions}. Existing in-memory positions: {Positions}", exchangePositions, positions.Values |> Seq.toList)
             removePositionsNotOnExchange exchange.Id exchangePositions
             Log.Information ("In-memory positions after cleaning up: {Positions}", positions.Values |> Seq.toList)
-            savePositions exchangePositions |> ignore
+            
+            let! (positionsWithDbData: (PositionAnalysis * FuturesPositionPnlView option) array) = 
+                exchangePositions
+                |> Seq.map (fun p -> 
+                        asyncResult {
+                            let! positionInDb = getPositionsFromDataStore exchange.Id p.Symbol p.PositionSide
+                            let poss =
+                                match positionInDb with
+                                | Some pos -> p, Some pos
+                                | None -> p, None
+                            return poss
+                        }
+                        |> AsyncResult.mapError (fun err ->
+                                Log.Warning(err, "Error fetching position from db for exchange {Exchange}, symbol {Symbol}, side {PositionSide}: {Error}",
+                                        exchange.Name,
+                                        p.Symbol,
+                                        p.PositionSide,
+                                        err.Message
+                                    )
+                            )
+                        |> Async.map (fun result -> Result.fold id (fun _ -> p, None) result)
+                    )
+                |> Async.Parallel
+            
+            savePositions positionsWithDbData |> ignore
 
             Log.Information "Now cleaning up old stopped out positions"
             cleanUpStoppedPositions ()
@@ -341,7 +375,7 @@ let private refreshPositions (exchanges: IFuturesExchange seq) =
     |> Async.Parallel
     |> Async.Ignore
 
-let private updatePositionPnl (exchange: IFuturesExchange) (price: OrderBookTickerInfo) =
+let private updatePositionPnl (getPositionsFromDataStore: GetPositionsFromDataStore) (exchange: IFuturesExchange) (price: OrderBookTickerInfo) =
     [ LONG; SHORT ]
     |> List.map ((makePositionKey'' exchange.Id price.Symbol) >>
                  (fun key ->  (positions.TryGetValue key), key))
@@ -369,12 +403,12 @@ let private updatePositionPnl (exchange: IFuturesExchange) (price: OrderBookTick
                 async {
                     do! closeSignal exchange.Name positions.[key] price
                     do! Async.Sleep (45 * 1000) // 45 seconds
-                    do! refreshPositions [exchange]
+                    do! refreshPositions getPositionsFromDataStore [exchange]
                 }
                 |> Async.Start
         )
 
-let private mkTradeAgent (exchanges: IFuturesExchange seq) =
+let private mkTradeAgent (getPositionsFromDataStore: GetPositionsFromDataStore) (exchanges: IFuturesExchange seq) =
     MailboxProcessor<PositionCommand>.Start (fun inbox ->
         let rec messageLoop() = async {
             let! msg = inbox.Receive()
@@ -388,7 +422,7 @@ let private mkTradeAgent (exchanges: IFuturesExchange seq) =
                             Log.Error ("FuturesPositionUpdate: Could not find exchange {ExchangeId}: {Error}" , exchangeId, s)
                             Async.singleton ()
                         | Ok exchange ->
-                            // add or update positions from the incoming update
+                            // add or update positions from the incoming update (pushed from the Exchange via WS usually)
                             async {
                                 do!
                                     positionUpdates
@@ -396,27 +430,19 @@ let private mkTradeAgent (exchanges: IFuturesExchange seq) =
                                     |> Async.Parallel
                                     |> Async.Ignore
 
-                                // do the reverse: remove any positions that are in-memory, but not in accountUpdate
-                                positions.Values
-                                |> Seq.map makePositionKey
-                                |> Seq.except (
-                                        positionUpdates
-                                        |> Seq.map makePositionKey'
-                                    )
-                                |> Seq.iter (positions.Remove >> ignore)
-
-                                return ()
+                                // NOT doing the reverse: remove any positions that are in-memory, but not in positionUpdates
+                                // because this maybe a _partial_ position list pushed to us
                             }
 
                 | FuturesBookPrice (exchangeId, bookPrice) ->
                     match lookupExchange exchangeId with
                     | Ok exchange ->
-                        updatePositionPnl exchange bookPrice
+                        updatePositionPnl getPositionsFromDataStore exchange bookPrice
                     | Result.Error s -> 
                         Log.Error ("Could not find exchange {ExchangeId}: {Error}", exchangeId, s)
 
                 | RefreshPositions ->
-                    do! refreshPositions exchanges
+                    do! refreshPositions getPositionsFromDataStore exchanges
 
             with e ->
                 Log.Error (e, "Error handling msg: {Error}", msg)
@@ -426,12 +452,15 @@ let private mkTradeAgent (exchanges: IFuturesExchange seq) =
         messageLoop()
     )
 
-let trackPositions (exchanges: IFuturesExchange seq) =
+
+let trackPositions (getPositionsFromDataStore: GetPositionsFromDataStore) 
+    (exchanges: IFuturesExchange seq) =
+
     use _x = LogContext.PushProperty ("Futures", true)
 
     Log.Information "Starting socket client for Binance futures user data stream"
 
-    let tradeAgent = mkTradeAgent exchanges
+    let tradeAgent = mkTradeAgent getPositionsFromDataStore exchanges
     
     // need to add an error handler to ensure the process crashes properly
     // we might later need to make this smarter, to crash only on repeated exceptions of the same kind or 
@@ -441,8 +470,7 @@ let trackPositions (exchanges: IFuturesExchange seq) =
     repeatEvery (TimeSpan.FromSeconds(3.0)) printPositionSummary "PositionSummaryPrinter" |> Async.Start
 
     // required to ensure we get reasonably fresh data about positions
-    // 
-    repeatEvery (TimeSpan.FromSeconds(15.0)) (fun () -> refreshPositions exchanges) "PositionRefresh" |> Async.Start
+    repeatEvery (TimeSpan.FromSeconds(15.0)) (fun () -> refreshPositions getPositionsFromDataStore exchanges) "PositionRefresh" |> Async.Start
 
     exchanges
     |> Seq.map (fun exchange -> exchange.TrackPositions tradeAgent)

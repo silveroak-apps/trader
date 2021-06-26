@@ -35,8 +35,8 @@ let getBaseClient () =
         opts
 
     let binanceOptions = new BinanceClient(options)
-    Log.Verbose("Using Binance URLs: coin-m = {FuturesCoinMBaseUrl}, usdt = {FuturesUsdtBaseUrl}", 
-        options.BaseAddressCoinFutures, options.BaseAddressUsdtFutures)
+    // Log.Verbose("Using Binance URLs: coin-m = {FuturesCoinMBaseUrl}, usdt = {FuturesUsdtBaseUrl}", 
+        // options.BaseAddressCoinFutures, options.BaseAddressUsdtFutures)
 
     binanceOptions
 
