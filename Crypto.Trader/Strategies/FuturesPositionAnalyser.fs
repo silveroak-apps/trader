@@ -159,7 +159,8 @@ let private savePositions (ps: (PositionAnalysis * FuturesPositionPnlView option
                             CalculatedPnlPercent = existingPosition.CalculatedPnlPercent
                             IsStoppedOut = false // reset
                             StoplossPnlPercentValue = existingPosition.StoplossPnlPercentValue
-                            PositionInDb = posInDb
+                            PositionInDb =
+                                if pos.PositionInDb.IsNone then posInDb else pos.PositionInDb
                     }
                 else
                     pos
