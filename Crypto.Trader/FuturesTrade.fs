@@ -123,10 +123,10 @@ let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) (bestOrderPri
         let mapOrderError err =
             match err with
             | OrderRejectedError ore ->
-                Log.Error("Error (order rejected by exchange) trying to execute signal command {CommandId}: {Error}", s.Id, ore)
+                Log.Error("Error (order rejected by exchange) trying to execute signal command {SignalCommandId}: {Error}", s.Id, ore)
                 ore
             | OrderError oe ->
-                Log.Error("Error trying to execute signal command {CommandId}: {Error}", s.Id, oe)
+                Log.Error("Error trying to execute signal command {SignalCommandId}: {Error}", s.Id, oe)
                 oe
             |> exn
 
@@ -307,10 +307,10 @@ let rec executeOrdersForCommand
 
     asyncResult {
 
-        // don't pushproperty outside this scope - so the recursive message loop gets it. We dont want that!
-        use _ = LogContext.PushProperty("CommandId", signalCommand.Id)
-        use _ = LogContext.PushProperty("SignalId", signalCommand.SignalId)
-        use _ = LogContext.PushProperty("Exchange", exchange.GetType().Name)
+        // // don't pushproperty outside this scope - so the recursive message loop gets it. We dont want that!
+        // use _ = LogContext.PushProperty("SignalCommandId", signalCommand.Id)
+        // use _ = LogContext.PushProperty("SignalId", signalCommand.SignalId)
+        // use _ = LogContext.PushProperty("Exchange", exchange.GetType().Name)
         (*
            Exit when
             DONE - max attempts reached
@@ -351,7 +351,7 @@ let rec executeOrdersForCommand
 
         if any exitConditions
         then 
-            Log.Information("Done executing command {CommandId} {successPhrase}. Retried {MaxAttempts} times with {OrderCount} orders. Finishing signal command {originalSignalCommand}...",
+            Log.Information("Done executing command {SignalCommandId} {successPhrase}. Retried {MaxAttempts} times with {OrderCount} orders. Finishing signal command {originalSignalCommand}...",
                 signalCommand.Id,
                 (if isCommandFilled then "successfully" else "partially"),
                 maxAttempts,
@@ -415,7 +415,7 @@ let rec executeOrdersForCommand
                     cancelOrderWithRetryOnError exchange orderQuery
 
                 // we need to query again, so we get a potentially updated executedQty
-                Log.Information ("Cancel order ({OrderId}) attempted, for signal {SignalId}, command {CommandId}. Success: {Success}. Querying latest status...",
+                Log.Information ("Cancel order ({OrderId}) attempted, for signal {SignalId}, command {SignalCommandId}. Success: {Success}. Querying latest status...",
                     newOrder.Id, newOrder.SignalId, signalCommand.Id, cancelled)
 
                 let! updatedOrder' = getLatestOrderState exchange updatedOrder 
@@ -466,6 +466,8 @@ let private mkTradeAgent
         MailboxProcessor<TradeAgentCommand>.Start (fun inbox ->
             let rec messageLoop() = async {
                 let! (FuturesTrade (s, placeRealOrders, replyCh)) = inbox.Receive()
+                use _ = LogContext.PushProperty("SignalId", s.SignalId)
+                use _ = LogContext.PushProperty("SignalCommandId", s.Id)
 
                 try
                     let key = s.Id
@@ -510,7 +512,7 @@ let private mkTradeAgent
                                     let! result = completeSignalCommands [(SignalCommandId s.Id)] SignalCommandStatus.FAILED
                                     match result with
                                     | Result.Error ex' -> 
-                                        Log.Error (ex', "Error marking command: {CommandId} as failed for signal: {SignalId}", s.Id, s.SignalId)
+                                        Log.Error (ex', "Error marking command: {SignalCommandId} as failed for signal: {SignalId}", s.Id, s.SignalId)
                                     | _ -> ()
                                 } 
                                 |> Async.Ignore
@@ -520,11 +522,11 @@ let private mkTradeAgent
                         |> Async.Start
                         
                     else
-                        Log.Warning ("Command {CommandId} for signal {SignalId} has already been processed. Skipping ...", s.Id, s.SignalId)
+                        Log.Warning ("Command {SignalCommandId} for signal {SignalId} has already been processed. Skipping ...", s.Id, s.SignalId)
 
                     replyCh.Reply()
                 with e ->
-                    Log.Error (e, "Error handling trade msg: for SignalCommand {Command} {SignalId}", s, s.SignalId)
+                    Log.Error (e, "Error handling trade msg: for SignalCommand {SignalCommandId} {SignalId}", s, s.SignalId)
 
                 cleanupSignalsInMemory ()
                 return! messageLoop()
@@ -583,7 +585,7 @@ let processValidSignals
                 fun s -> 
                     match tradeAgent with
                     | Some agent -> agent.PostAndAsyncReply (fun replyCh -> FuturesTrade (s, placeRealOrders, replyCh))
-                    | _ -> raise <| exn "Unexpected error: trade agent is not setup"
+                    | _ -> raise <| exn "Unexpected error: trade agent is not setup processing {SignalId}"
                 )
 
         // now we need to 'expire' / invalidate commands that won't be run
@@ -598,23 +600,28 @@ let processValidSignals
                  oldCommands |> Seq.length,
                  lapsedStats,
                  oldCommands)
-            let cmdIds = oldCommands |> Seq.map(fun s -> SignalCommandId s.Id)
+            let cmdIds = 
+                oldCommands 
+                |> Seq.map(fun s -> SignalCommandId s.Id)
+            cmdIds |> Seq.map (fun c -> Log.Warning("Trying to expire {SignalCommandId} for the {SignalId}", c, SignalId)) |> ignore
+
             let! result =  completeSignalCommands cmdIds SignalCommandStatus.EXPIRED
             match result with
-            | Result.Error e -> Log.Warning(e, "Error expiring old / stale signal commands. Ignoring...")
+            | Result.Error e -> Log.Warning(e, "Error expiring old / stale signal commands. Ignoring... for {SignalId}", SignalId)
             | _ -> ()
 
         // category 2: newer command is available, so these previousCommands are invalid now
         let previousCommands = signalCommands |> Seq.except latestCommands
         let lapsedStats = previousCommands |> Seq.map(fun s -> s.SignalId, DateTime.UtcNow, s.RequestDateTime, (DateTime.UtcNow - s.RequestDateTime).TotalSeconds)
         if not (previousCommands |> Seq.isEmpty) then
-            Log.Debug ("Found {SignalCountThisTick} overridden signals. Lapsed stats: {SignalLapsedStats}. Setting to lapsed: {SignalCommands}.",
+            Log.Debug ("For {SignalId} Found {SignalCountThisTick} overridden signals. Lapsed stats: {SignalLapsedStats}. Setting to lapsed: {SignalCommands}.",
+                SignalId,
                 previousCommands |> Seq.length, 
                 lapsedStats,
                 previousCommands)
             let cmdIds = previousCommands |> Seq.map(fun s -> SignalCommandId s.Id)
             let! result =  completeSignalCommands cmdIds SignalCommandStatus.EXPIRED
             match result with
-            | Result.Error e -> Log.Warning(e, "Error expiring previous / overridden signal commands. Ignoring...")
+            | Result.Error e -> Log.Warning(e, "Error expiring previous / overridden signal commands for {SignalId}. Ignoring...", SignalId)
             | _ -> ()
     }
