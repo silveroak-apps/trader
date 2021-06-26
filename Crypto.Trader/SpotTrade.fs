@@ -6,6 +6,7 @@ open FSharp.Control
 open Types
 open Serilog.Context
 open DbTypes
+open FsToolkit.ErrorHandling
 
 let maxSignalsForCompounding = 5
 
@@ -131,7 +132,9 @@ let private cancelIfNotFilled saveOrder (exchange: IExchange) (order: ExchangeOr
             Log.Warning (e, "Error in cancelIfNotFilled, for order {ExchangeOrder}. (Signal: {SignalId})", order, order.SignalId)
     }
 
-let private getAssetAmount getOrdersForSignal orderSide exchange (signal: Signal) = 
+let private getAssetAmount 
+    (getOrdersForSignal: int64 -> Async<Result<ExchangeOrder seq, exn>>)
+    orderSide exchange (signal: Signal) = 
     async {
         if orderSide = OrderSide.BUY then
             (*
@@ -148,25 +151,35 @@ let private getAssetAmount getOrdersForSignal orderSide exchange (signal: Signal
             let result = 
                 getFixedTradeAmount' exchange (Symbol signal.Symbol)
                 |> Result.map (fun marketAmount -> marketAmount / signal.SuggestedPrice)
+                |> Result.mapError exn
             return result
         else
             // get total buy order executed qty for this signal
-            let! orders = getOrdersForSignal signal.SignalId
-            let totalBoughtAmount = 
-                Seq.sumBy (fun o -> o.ExecutedQty - o.FeeAmount) (orders
-                |> Seq.filter (fun o -> String.Equals(o.OrderSide, "BUY", StringComparison.OrdinalIgnoreCase) && o.ExecutedQty > 0M))
-        
-            return (if totalBoughtAmount > 0M 
-                    then Ok (totalBoughtAmount * 1M<qty>) 
-                    else 
-                        Log.Warning ("Got BUY orders: {Orders}, no bought quantity when trying to sell.", orders)
-                        Error <| sprintf "No bought quantity for signal %d" signal.SignalId)
+            let! ordersResult = getOrdersForSignal signal.SignalId
+            let assetAmtResult =
+                ordersResult
+                |> Result.bind (fun orders -> 
+                        let totalBoughtAmount = 
+                            Seq.sumBy (fun o -> o.ExecutedQty - o.FeeAmount) (orders
+                            |> Seq.filter (fun o -> String.Equals(o.OrderSide, "BUY", StringComparison.OrdinalIgnoreCase) && o.ExecutedQty > 0M))
+                
+                        if totalBoughtAmount > 0M 
+                        then Ok (totalBoughtAmount * 1M<qty>) 
+                        else 
+                            Log.Warning ("Got BUY orders: {Orders}, no bought quantity when trying to sell.", orders)
+                            Error (exn <| sprintf "No bought quantity for signal %d" signal.SignalId)
+                    )
+            return assetAmtResult
     }
 
-let private placeOrder getOrdersForSignal (saveOrder: ExchangeOrder -> Async<Result<int64, exn>>) (s: Signal) (placeRealOrders: bool) =
+let private placeOrder 
+    (getOrdersForSignal: int64 -> Async<Result<ExchangeOrder seq, exn>>)
+    (saveOrder: ExchangeOrder -> Async<Result<int64, exn>>)
+    (s: Signal)
+    (placeRealOrders: bool) =
     // TODO - this needs a lot of cleanup and unification with the Futures trade flow
 
-    async {
+    asyncResult {
         // don't pushproperty outside this scope - so the recursive message loop gets it. We dont want that!
         use _ = LogContext.PushProperty("SignalId", s.SignalId)
         use _ = LogContext.PushProperty("ExchangeId", s.ExchangeId)
@@ -184,111 +197,109 @@ let private placeOrder getOrdersForSignal (saveOrder: ExchangeOrder -> Async<Res
 
                 let assetAmountResult = getAssetAmount getOrdersForSignal orderSide exchange s
 
-                async {
-                    match! assetAmountResult with
-                    | Error e -> return (Error e)
-                    | Ok assetQty  -> 
+                asyncResult {
+                    let! assetQty = assetAmountResult
+                    let price = {
+                        OrderBookTickerInfo.AskPrice = 0M
+                        BidPrice = 0M
+                        Symbol = Symbol ""
+                        BidQty = 0M
+                        AskQty = 0M
+                    }
+                        // exchange.GetOrderBookCurrentPrice (Symbol s.Symbol)
+                    // intentionally reduce potential loss due to spread
+                    let orderPrice =
+                        // this works when we go long
+                        // for short, we need to reverse the logic and play safe for buy
+                        if orderSide = BUY then Math.Min(s.SuggestedPrice, price.BidPrice)
+                        else
+                            // for sell check if the current 'best ask' is better than what we thought
+                            // or if it is worse, it is not too bad < 0.1% diff
+                            if price.AskPrice - s.SuggestedPrice > 0M || (s.SuggestedPrice - price.AskPrice) * 100M / price.AskPrice < 0.1M then
+                                price.AskPrice
+                            else s.SuggestedPrice
+                    Log.Information("Placing {OrderSide} order with reduced spread loss. Signal suggested price: {SignalSuggestedPrice}. Order request price: {OrderRequestPrice}",
+                        orderSide,
+                        s.SuggestedPrice,
+                        orderPrice
+                        )
+                    let orderInput = {
+                        OrderInputInfo.SignalId = s.SignalId
+                        OrderSide = orderSide
+                        Price = orderPrice * 1M<price>
+                        Symbol = sym
+                        Quantity = assetQty
+                        PositionSide = NOT_APPLICABLE
+                        OrderType = OrderType.LIMIT
+                        SignalCommandId = 0L
+                    }
 
-                        match! exchange.GetOrderBookCurrentPrice (Symbol s.Symbol) with
-                        | Error msg -> return (Error <| sprintf "Could not get latest orderbook price before placing order for %s: %s" s.Symbol msg)
-                        | Ok price ->
-                            // intentionally reduce potential loss due to spread
-                            let orderPrice =
-                                // this works when we go long
-                                // for short, we need to reverse the logic and play safe for buy
-                                if orderSide = BUY then Math.Min(s.SuggestedPrice, price.BidPrice)
-                                else
-                                    // for sell check if the current 'best ask' is better than what we thought
-                                    // or if it is worse, it is not too bad < 0.1% diff
-                                    if price.AskPrice - s.SuggestedPrice > 0M || (s.SuggestedPrice - price.AskPrice) * 100M / price.AskPrice < 0.1M then
-                                        price.AskPrice
-                                    else s.SuggestedPrice
-                            Log.Information("Placing {OrderSide} order with reduced spread loss. Signal suggested price: {SignalSuggestedPrice}. Order request price: {OrderRequestPrice}",
-                                orderSide,
-                                s.SuggestedPrice,
-                                orderPrice
-                                )
-                            let orderInput = {
-                                OrderInputInfo.SignalId = s.SignalId
-                                OrderSide = orderSide
-                                Price = orderPrice * 1M<price>
-                                Symbol = sym
-                                Quantity = assetQty
-                                PositionSide = NOT_APPLICABLE
-                                OrderType = OrderType.LIMIT
+                    // we're about to place an order: record it in the db, so we have the link between the order and signal saved
+                    let exo =
+                            {
+                                ExchangeOrder.CreatedTime = DateTime.UtcNow
+                                Id = 0L // to be assigned by the db
+                                Status = "READY"
+                                StatusReason = "About to place Order"
+                                Symbol = string orderInput.Symbol
+                                Price = orderInput.Price / 1M<price>
+                                OriginalQty = orderInput.Quantity / 1M<qty>
+                                ExchangeOrderIdSecondary = string orderInput.SignalId
+                                SignalId = s.SignalId
                                 SignalCommandId = 0L
+                                UpdatedTime = DateTime.UtcNow
+                                ExchangeId = s.ExchangeId
+                                OrderSide = string orderInput.OrderSide
+                                LastTradeId = 0L
+                                ExchangeOrderId = ""
+                                ExecutedPrice = 0M // the order is not yet executed - this should be updated by trade status updates
+                                ExecutedQty = 0M
+                                FeeAmount = 0M // initially we've not executed anything - so no fees yet
+                                FeeCurrency = "" // nothing is executed yet. so we dont know what this is.
                             }
 
-                            // we're about to place an order: record it in the db, so we have the link between the order and signal saved
-                            let exo =
-                                    {
-                                        ExchangeOrder.CreatedTime = DateTime.UtcNow
-                                        Id = 0L // to be assigned by the db
-                                        Status = "READY"
-                                        StatusReason = "About to place Order"
-                                        Symbol = string orderInput.Symbol
-                                        Price = orderInput.Price / 1M<price>
-                                        OriginalQty = orderInput.Quantity / 1M<qty>
-                                        ExchangeOrderIdSecondary = string orderInput.SignalId
-                                        SignalId = s.SignalId
-                                        SignalCommandId = 0L
-                                        UpdatedTime = DateTime.UtcNow
-                                        ExchangeId = s.ExchangeId
-                                        OrderSide = string orderInput.OrderSide
-                                        LastTradeId = 0L
-                                        ExchangeOrderId = ""
-                                        ExecutedPrice = 0M // the order is not yet executed - this should be updated by trade status updates
-                                        ExecutedQty = 0M
-                                        FeeAmount = 0M // initially we've not executed anything - so no fees yet
-                                        FeeCurrency = "" // nothing is executed yet. so we dont know what this is.
-                                    }
+                    let! exoId = saveOrder exo
 
-                            let! exoIdResult = saveOrder exo
-                            match exoIdResult with
-                            | Error err -> 
-                                Log.Error ("Error saving newly placed spot order: {Error}", err)
-                                return (Error <| string err)
-                            | Ok exoId ->
-                                Log.Information ("Saved order {ExchangeOrderId} as READY for signal {SignalId}", exoId, s.SignalId)
+                    Log.Information ("Saved order {ExchangeOrderId} as READY for signal {SignalId}", exoId, s.SignalId)
 
-                                match! exchange.PlaceOrder orderInput with
-                                | Ok o ->
-                                
-                                    let exo' =
-                                        { exo with Id = exoId }
-                                        |> updateOrderWith o "Placed order"
+                    //let! o = exchange.PlaceOrder orderInput 
+                    
+                    let exo' =
+                        { exo with Id = exoId }
+                        //|> updateOrderWith o "Placed order"
 
-                                    // save to db here to record it in case there's some problem with the websocket updates
-                                    // atleast we'll have a reference to call the Exchange later
-                                    // If the websocket updates work, and come in before this save happens,
-                                    // it should still work because the websocket update will find it by id / signal id + order side
-                                    do! saveOrder exo' |> Async.Ignore
-                                    Log.Information ("Saved order {ExchangeOrderId} as {Status} for signal {SignalId}",
-                                        exoId,
-                                        exo'.Status,
-                                        s.SignalId)
-                                    return (Ok exo')
+                    // save to db here to record it in case there's some problem with the websocket updates
+                    // atleast we'll have a reference to call the Exchange later
+                    // If the websocket updates work, and come in before this save happens,
+                    // it should still work because the websocket update will find it by id / signal id + order side
+                    do! saveOrder exo' |> Async.Ignore
+                    Log.Information ("Saved order {ExchangeOrderId} as {Status} for signal {SignalId}",
+                        exoId,
+                        exo'.Status,
+                        s.SignalId)
+                    return (Ok exo')
 
-                                | Error (OrderRejectedError ore) ->
-                            
-                                    do! saveOrder { exo with Id = exoId; Status = "REJECTED"; StatusReason = ore } |> Async.Ignore
-                                    return (Error ore)
+                    // | Error (OrderRejectedError ore) ->
+                
+                    //     do! saveOrder { exo with Id = exoId; Status = "REJECTED"; StatusReason = ore } |> Async.Ignore
+                    //     return (Error <| exn <| ore)
 
-                                | Error (OrderError oe) ->
-                                
-                                    do! saveOrder { exo with Id = exoId; Status = "ERROR"; StatusReason = oe } |> Async.Ignore
-                                    return (Error oe)
+                    // | Error (OrderError oe) ->
+                    
+                    //     do! saveOrder { exo with Id = exoId; Status = "ERROR"; StatusReason = oe } |> Async.Ignore
+                    //     return (Error <| exn <| oe)
                 }
 
+            let! aa = exOrderAsyncResult
             match! exOrderAsyncResult with
             // Removed the cancelation as - during the bull run it may not be required (2021 - Jan)
-            | Ok _exOrder ->
+            | _ ->
                 ()
                 // start a thread that cancels the order if not filled
                 // if placeRealOrders then
                 //     cancelIfNotFilled exchange exOrder |> Async.Start
-            | Error s -> 
-                Log.Error ("Error placing order {OrderError}", s)
+            // | Error s -> 
+            //     Log.Error ("Error placing order {OrderError}", s)
     }
 type private TradeAgentCommand = 
     | Trade of Signal * bool * AsyncReplyChannel<unit>
@@ -311,7 +322,7 @@ let private mkTradeAgent getOrdersForSignal saveOrder =
 
     let agent = 
         MailboxProcessor<TradeAgentCommand>.Start (fun inbox ->
-            let rec messageLoop() = async {
+            let rec messageLoop() = asyncResult {
                 let! (Trade (s, placeRealOrders, replyCh)) = inbox.Receive()
 
                 try
@@ -328,7 +339,8 @@ let private mkTradeAgent getOrdersForSignal saveOrder =
                 cleanupSignalsInMemory ()
                 return! messageLoop()
             }
-            messageLoop()
+            
+            messageLoop() |> Async.Ignore
         )
     // need to add an error handler to ensure the process crashes properly
     // we might later need to make this smarter, to crash only on repeated exceptions of the same kind or 
@@ -338,10 +350,16 @@ let private mkTradeAgent getOrdersForSignal saveOrder =
 
 let mutable private tradeAgent: MailboxProcessor<TradeAgentCommand> option = None
 
-let processValidSignals getSignalsToBuyOrSell expireSignals getOrdersForSignal getExchangeOrder saveOrder (placeRealOrders: bool) =
+let processValidSignals 
+    (getSignalsToBuyOrSell: unit -> Async<Result<seq<Signal>,exn>>)
+    (expireSignals: seq<Signal> -> Async<Result<unit,exn>>)
+    (getOrdersForSignal: int64 -> Async<Result<ExchangeOrder seq,exn>>)
+    (getExchangeOrder)
+    (saveOrder)
+    (placeRealOrders: bool) =
     let saveOrder' exo = saveOrder exo SPOT
 
-    async {
+    asyncResult {
         if placeRealOrders then Log.Debug ("Getting signals to buy/sell")
         let! signals = getSignalsToBuyOrSell ()
 
