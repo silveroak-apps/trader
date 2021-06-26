@@ -476,10 +476,10 @@ let private mkTradeAgent
 
                         let exchangeId = if placeRealOrders then s.ExchangeId else Simulator.ExchangeId
                         let attemptCount = 1
-                        let maxAttempts = if s.Action = "OPEN" then 5 else 100 //TODO: move to config
+                        let maxAttempts = if s.Action = "OPEN" then 10 else 100 //TODO: move to config
                         let cancellationDelay = if s.Action = "OPEN" then 5 else 5 // seconds
                         let maxSlippage = Strategies.Common.tradePriceSlippageAllowance
-                        let totalWaitTime = TimeSpan.FromMinutes 1.0 // per order, we wait a total of this amount of time (including all retries) //TODO: move to config
+                        let totalWaitTime = TimeSpan.FromMinutes 3.0 // per order, we wait a total of this amount of time (including all retries) //TODO: move to config
 
                         (*
                         1 find our which exchange to place order
