@@ -39,7 +39,7 @@ type PositionAnalysis = {
 type GetPositionsFromDataStore = ExchangeId -> Symbol -> PositionSide -> Async<Result<FuturesPositionPnlView option, exn>>
 
 let private maybeSignalId (pos: PositionAnalysis) = 
-    pos.PositionInDb |> Option.map (fun p -> p.SignalId |> string) |> Option.defaultValue "??"
+    pos.PositionInDb |> Option.map (fun p -> p.SignalId) |> Option.defaultValue -1L
 
 let private positions = new ConcurrentDictionary<PositionKey, PositionAnalysis>()
 
