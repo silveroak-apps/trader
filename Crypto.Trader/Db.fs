@@ -335,8 +335,8 @@ let private getPosition' (ExchangeId exchangeId) (Symbol s) (p: PositionSide) =
         return (positions 
                 |> Seq.map (fun e -> 
                         {  e with 
-                            EntryTime = mapNullable unspecToUtcKind e.EntryTime
-                            ExitTime = mapNullable unspecToUtcKind e.ExitTime
+                            EntryTime = unspecToUtcKind e.EntryTime
+                            ExitTime = unspecToUtcKind e.ExitTime
                         }
                     )
                 )
