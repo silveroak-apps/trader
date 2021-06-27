@@ -40,9 +40,9 @@ type FuturesPositionPnlView = {
     PendingBuyQty: decimal
     ExecutedSellQty: decimal
     PendingSellQty: decimal
-    OpenCommandsCount: int
-    CloseCommandsCount: int
-    PendingCommandsCount: int
+    OpenCommandsCount: int64
+    CloseCommandsCount: int64
+    PendingCommandsCount: int64
     EntryPrice: decimal
     ClosePrice: decimal
     EntryTime: DateTime
