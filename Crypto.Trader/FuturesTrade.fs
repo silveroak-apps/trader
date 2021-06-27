@@ -542,9 +542,9 @@ let private mkTradeAgent
 let mutable private tradeAgent: MailboxProcessor<TradeAgentCommand> option = None
 
 let processValidSignals
-    (getFuturesSignalCommands: unit -> Async<FuturesSignalCommandView seq>)
+    (getFuturesSignalCommands: unit -> Async<Result<FuturesSignalCommandView seq, exn>>)
     (completeSignalCommands: SignalCommandId seq -> SignalCommandStatus -> Async<Result<unit, exn>>)
-    (getExchangeOrder: int64 -> Async<ExchangeOrder option>)
+    (getExchangeOrder: int64 -> Async<Result<ExchangeOrder option, exn>>)
     (saveOrder: ExchangeOrder -> TradeMode -> Async<Result<int64, exn>>)
     (getPositionSize: SignalId -> Async<Result<decimal, exn>>)
     (placeRealOrders: bool) =
@@ -555,7 +555,7 @@ let processValidSignals
             return Result.map (fun exoId -> { exo with ExchangeOrder.Id = exoId }) exoIdResult
         }
     
-    async {
+    asyncResult {
         Log.Debug ("Getting signal commands to action")
         let! signalCommands = getFuturesSignalCommands ()
         
@@ -605,10 +605,7 @@ let processValidSignals
                 |> Seq.map(fun s -> SignalCommandId s.Id)
             cmdIds |> Seq.map (fun c -> Log.Warning("Trying to expire {SignalCommandId} for the {SignalId}", c, SignalId)) |> ignore
 
-            let! result =  completeSignalCommands cmdIds SignalCommandStatus.EXPIRED
-            match result with
-            | Result.Error e -> Log.Warning(e, "Error expiring old / stale signal commands. Ignoring... for {SignalId}", SignalId)
-            | _ -> ()
+            do! completeSignalCommands cmdIds SignalCommandStatus.EXPIRED
 
         // category 2: newer command is available, so these previousCommands are invalid now
         let previousCommands = signalCommands |> Seq.except latestCommands
@@ -620,8 +617,7 @@ let processValidSignals
                 lapsedStats,
                 previousCommands)
             let cmdIds = previousCommands |> Seq.map(fun s -> SignalCommandId s.Id)
-            let! result =  completeSignalCommands cmdIds SignalCommandStatus.EXPIRED
-            match result with
-            | Result.Error e -> Log.Warning(e, "Error expiring previous / overridden signal commands for {SignalId}. Ignoring...", SignalId)
-            | _ -> ()
+            do! completeSignalCommands cmdIds SignalCommandStatus.EXPIRED
     }
+    |> AsyncResult.mapError (fun ex -> Log.Error(ex, "Error processing signal commands"))
+    |> Async.Ignore
