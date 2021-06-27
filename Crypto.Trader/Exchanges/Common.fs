@@ -24,7 +24,7 @@ let private pushoverUserKey = cfg.Item "UserKey"
 let private pushoverAppKey = cfg.Item "AppKey"
 let private pushoverHttpClient = new HttpClient()
 
-let raisePushOverAlet (message: PushOverMessage) =
+let raisePushOverAlert (message: PushOverMessage) =
     async {
         match pushoverUrl.Value with
         | pushoverUrl when pushoverUrl.Length > 0 ->
