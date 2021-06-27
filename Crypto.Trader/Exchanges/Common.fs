@@ -30,7 +30,8 @@ let raisePushOverAlert (message: PushOverMessage) =
         | pushoverUrl when pushoverUrl.Length > 0 ->
             Log.Information("Pushing alret to pushover {Message}", message)
             try
-                let pushoverUri = sprintf "%s/?user=%s&token=%s/message=%s" pushoverUrl pushoverUserKey pushoverAppKey (string message)
+                let pushoverUri = Uri.EscapeDataString(sprintf "%s/?user=%s&token=%s/message=%s" pushoverUrl pushoverUserKey pushoverAppKey (string message))
+
                 let! response =
                     pushoverHttpClient.GetAsync(pushoverUri)
                     |> Async.AwaitTask
