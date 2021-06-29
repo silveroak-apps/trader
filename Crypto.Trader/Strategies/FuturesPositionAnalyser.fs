@@ -347,7 +347,7 @@ let private refreshPositions (getPositionsFromDataStore: GetPositionsFromDataSto
                 exchangePositions
                 |> Seq.map (fun p -> 
                         asyncResult {
-                            let! positionInDb = getPositionsFromDataStore exchange.Id p.Symbol p.PositionSide
+                            let! positionInDb = getPositionsFromDataStore p.ExchangeId p.Symbol p.PositionSide
                             let poss =
                                 match positionInDb with
                                 | Some pos -> p, Some pos

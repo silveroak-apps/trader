@@ -389,6 +389,32 @@ let rec executeOrdersForCommand
                     signalCommand
                     newOrder
 
+            let saveCancelSaveFlow order = 
+                asyncResult {
+                    let! updatedOrder' = saveOrder order
+                    Log.Information("Trying to cancel order {ExchangeOrder} (Signal: {SignalId}), because it didn't fill yet. Current status: {OrderStatus}",
+                        updatedOrder',
+                        updatedOrder'.SignalId,
+                        updatedOrder'.Status)
+
+                    let! cancelled = 
+                        let orderQuery = {
+                            OrderQueryInfo.OrderId = OrderId newOrder.ExchangeOrderId
+                            Symbol = Symbol newOrder.Symbol
+                        }
+                        cancelOrderWithRetryOnError exchange orderQuery
+
+                    // we need to query again, so we get a potentially updated executedQty
+                    Log.Information ("Cancel order ({OrderId}) attempted, for signal {SignalId}, command {SignalCommandId}. Success: {Success}. Querying latest status...",
+                        newOrder.Id, newOrder.SignalId, signalCommand.Id, cancelled)
+
+                    let! updatedOrder' = getLatestOrderState exchange order 
+                    let! updatedOrder'' = saveOrder updatedOrder'
+
+                    Log.Debug ("Saved order after cancellation attempt: {UpdatedOrder}", updatedOrder'')
+                    return updatedOrder''
+                }
+
             match waitResult with
             | OrderFilled updatedOrder -> 
                 let! filledOrder' = saveOrder updatedOrder
@@ -396,33 +422,13 @@ let rec executeOrdersForCommand
                 return (filledOrder' :: ordersSoFar)
 
             | MaxWaitTimeReached updatedOrder ->
-                let! updatedOrder' = saveOrder updatedOrder
+                let! updatedOrder' = saveCancelSaveFlow updatedOrder
                 Log.Warning("Not Placing any further orders for command {Command}. Max wait time reached ({MaxAttempts}).", signalCommand, maxWaitTime)
                 return (updatedOrder' :: ordersSoFar)
 
             | PriceMoved updatedOrder ->
-                let! updatedOrder' = saveOrder updatedOrder
-                Log.Information("Trying to cancel order {ExchangeOrder} (Signal: {SignalId}), because it didn't fill yet. Current status: {OrderStatus}",
-                    updatedOrder',
-                    updatedOrder'.SignalId,
-                    updatedOrder'.Status)
 
-                let! cancelled = 
-                    let orderQuery = {
-                        OrderQueryInfo.OrderId = OrderId newOrder.ExchangeOrderId
-                        Symbol = Symbol newOrder.Symbol
-                    }
-                    cancelOrderWithRetryOnError exchange orderQuery
-
-                // we need to query again, so we get a potentially updated executedQty
-                Log.Information ("Cancel order ({OrderId}) attempted, for signal {SignalId}, command {SignalCommandId}. Success: {Success}. Querying latest status...",
-                    newOrder.Id, newOrder.SignalId, signalCommand.Id, cancelled)
-
-                let! updatedOrder' = getLatestOrderState exchange updatedOrder 
-                let! updatedOrder'' = saveOrder updatedOrder'
-
-                Log.Debug ("Saved order after cancellation attempt: {UpdatedOrder}", updatedOrder'')
-
+                let! updatedOrder'' = saveCancelSaveFlow updatedOrder
                 let updatedOrders = updatedOrder'' :: ordersSoFar
 
                 let! orders = 
