@@ -252,6 +252,7 @@ type private TradeFlowWaitResult =
 | MaxWaitTimeReached of ExchangeOrder
 | PriceMoved of ExchangeOrder
 | OrderFilled of ExchangeOrder
+| MaxSlippageReached of ExchangeOrder
 
 let rec private waitForPriceMovementOrMaxTime (waitInterval: TimeSpan) (maxRetryTime: TimeSpan) (exchange: IExchange) (signalCommand: FuturesSignalCommandView) (order: ExchangeOrder) =
     asyncResult {
@@ -343,7 +344,6 @@ let rec executeOrdersForCommand
             | None -> false
 
         let exitConditions = [
-            slippageCrossed
             maxAttemptsCompleted
             maxWaitTimeReached
             isCommandFilled
@@ -358,12 +358,12 @@ let rec executeOrdersForCommand
                 ordersSoFar.Length,
                 signalCommand)
             
-            if slippageCrossed
-            then Log.Warning("Not Placing any further orders for command {Command}. Signal suggested price: {SignalSuggestedPrice}. Order request price: {OrderRequestPrice} as slippage crossed {Slippage}",
-                    signalCommand,
-                    signalCommand.Price,
-                    ops.OrderBookPrice,
-                    ops.SlippageFromCommand)
+            // if slippageCrossed
+            // then Log.Warning("Not Placing any further orders for command {Command}. Signal suggested price: {SignalSuggestedPrice}. Order request price: {OrderRequestPrice} as slippage crossed {Slippage}",
+            //         signalCommand,
+            //         signalCommand.Price,
+            //         ops.OrderBookPrice,
+            //         ops.SlippageFromCommand)
 
             if maxAttemptsCompleted
             then Log.Warning("Not Placing any further orders for command {Command}. Max attempts ({MaxAttempts}) completed.", signalCommand, maxAttempts)
@@ -426,6 +426,7 @@ let rec executeOrdersForCommand
                 Log.Warning("Not Placing any further orders for command {Command}. Max wait time reached ({MaxAttempts}).", signalCommand, maxWaitTime)
                 return (updatedOrder' :: ordersSoFar)
 
+            
             | PriceMoved updatedOrder ->
 
                 let! updatedOrder'' = saveCancelSaveFlow updatedOrder
