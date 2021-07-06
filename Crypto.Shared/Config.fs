@@ -26,7 +26,6 @@ let appConfig =
 
 let connectionStringWithName key = 
     let cnnStringsSection = appConfig.GetSection("ConnectionStrings")
-    Log.Verbose("Using connection string: {ConnectionString}", cnnStringsSection.Item key)
     cnnStringsSection.Item key
 
 let pgsqlConnectionString = connectionStringWithName "PostgresConnection"

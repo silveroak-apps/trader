@@ -35,8 +35,8 @@ let getBaseClient () =
         opts
 
     let binanceOptions = new BinanceClient(options)
-    Log.Verbose("Using Binance URLs: coin-m = {FuturesCoinMBaseUrl}, usdt = {FuturesUsdtBaseUrl}", 
-        options.BaseAddressCoinFutures, options.BaseAddressUsdtFutures)
+    // Log.Verbose("Using Binance URLs: coin-m = {FuturesCoinMBaseUrl}, usdt = {FuturesUsdtBaseUrl}", 
+        // options.BaseAddressCoinFutures, options.BaseAddressUsdtFutures)
 
     binanceOptions
 
@@ -66,20 +66,20 @@ let ExchangeId = 4L
 let usdtSymbols  = 
     dict [ 
         (Symbol "BNBUSDT",   { Types.ContractDetails.Multiplier = 1 })
-        (Symbol "BTCUSDT",   { Multiplier = 1 })
-        (Symbol "ETHUSDT",   { Multiplier = 1 })
-        (Symbol "ADAUSDT",   { Multiplier = 1 })
-        (Symbol "DOTUSDT",   { Multiplier = 1 })
-        (Symbol "DOGEUSDT",  { Multiplier = 1 })
-        (Symbol "MATICUSDT", { Multiplier = 1 })
-        (Symbol "LUNAUSDT",  { Multiplier = 1 })
+        //(Symbol "BTCUSDT",   { Multiplier = 1 })
+        //(Symbol "ETHUSDT",   { Multiplier = 1 })
+        //(Symbol "ADAUSDT",   { Multiplier = 1 })
+        //(Symbol "DOTUSDT",   { Multiplier = 1 })
+        //(Symbol "DOGEUSDT",  { Multiplier = 1 })
+        //(Symbol "MATICUSDT", { Multiplier = 1 })
+        //(Symbol "LUNAUSDT",  { Multiplier = 1 })
     ]
 
 let coinMSymbols  = 
     dict [ 
         (Symbol "BNBUSD",   { Types.ContractDetails.Multiplier = 10 })
-        (Symbol "BTCUSD",   { Multiplier = 100 })
-        (Symbol "ETHUSD",   { Multiplier = 10 })
-        (Symbol "ADAUSD",   { Multiplier = 10 })
+        //(Symbol "BTCUSD",   { Multiplier = 100 })
+        //(Symbol "ETHUSD",   { Multiplier = 10 })
+        //(Symbol "ADAUSD",   { Multiplier = 10 })
         (Symbol "DOTUSD",   { Multiplier = 10 })
     ]

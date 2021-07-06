@@ -292,25 +292,77 @@ let private saveOrder' (exo: ExchangeOrder) (t: TradeMode) =
         return orderId
     }
 
+let private getPosition' (ExchangeId exchangeId) (Symbol s) (p: PositionSide) =
+    async {
+        let getPositionsSql = 
+            "
+                SELECT signal_id as SignalId,
+                    symbol as Symbol,
+                    position_type as PositionType, 
+                    exchange_id as ExchangeId,
+                    strategy_pair_name as StrategyPairName, 
+                    signal_status as SignalStatus,
+                    position_status as PositionStatus, 
+                    executed_buy_qty as ExecutedBuyQty,
+                    pending_buy_qty as PendingBuyQty, 
+                    executed_sell_qty as ExecutedSellQty,
+                    pending_sell_qty as PendingSellQty, 
+                    open_commands_count as OpenCommandsCount,
+                    close_commands_count as CloseCommandsCount,
+                    pending_commands_count as PendingCommandsCount, 
+                    entry_price as EntryPrice,
+                    close_price as ClosePrice, 
+                    entry_time as EntryTime,
+                    exit_time as ExitTime, 
+                    pnl as Pnl,
+                    pnl_percent as PnlPercent,
+                    position_size as PositionSize
+                FROM futures_pnl
+                WHERE symbol = @Symbol 
+                    AND position_type = @PositionSide 
+                    AND exchange_id = @ExchangeId
+                    AND signal_status IN ('ACTIVE', 'CREATED', 'UNKNOWN')
+                ORDER BY signal_id DESC
+                LIMIT 1;
+            "
+        let! positions = 
+            getWithParam<FuturesPositionPnlView> getPositionsSql (
+                {|
+                    Symbol = s
+                    ExchangeId = exchangeId
+                    PositionSide = string p
+                |} :> obj)
+        return (positions 
+                |> Seq.map (fun e -> 
+                        {  e with 
+                            EntryTime = unspecToUtcKind e.EntryTime
+                            ExitTime = unspecToUtcKind e.ExitTime
+                        }
+                    )
+                )
+                |> Seq.tryHead
+    }
+
 type private DbAgentCommand = 
     // Spot only
-    | GetSignalsToBuyOrSell of AsyncReplyChannel<Signal seq>
-    | SetSignalsExpired of Signal seq * AsyncReplyChannel<unit>
+    | GetSignalsToBuyOrSell of AsyncReplyChannel<Result<Signal seq, exn>>
+    | SetSignalsExpired of Signal seq * AsyncReplyChannel<Result<unit, exn>>
 
     // Futures only
-    | GetFuturesSignalCommands of AsyncReplyChannel<FuturesSignalCommandView seq>
-    | SetSignalCommandComplete  of SignalCommandId seq * SignalCommandStatus * AsyncReplyChannel<unit>
-    | GetPositionSize of SignalId * AsyncReplyChannel<decimal>
+    | GetFuturesSignalCommands of AsyncReplyChannel<Result<FuturesSignalCommandView seq, exn>>
+    | SetSignalCommandComplete  of SignalCommandId seq * SignalCommandStatus * AsyncReplyChannel<Result<unit, exn>>
+    | GetPositionSize of SignalId * AsyncReplyChannel<Result<decimal, exn>>
+    | GetPosition of ExchangeId * Symbol * PositionSide * AsyncReplyChannel<Result<FuturesPositionPnlView option, exn>>
     
     // Common 
     // Save order handles signal updates too :/
-    | SaveOrder of ExchangeOrder  * TradeMode * AsyncReplyChannel<int64>
+    | SaveOrder of ExchangeOrder  * TradeMode * AsyncReplyChannel<Result<int64, exn>>
 
-    | GetOrdersForSignal of int64 * AsyncReplyChannel<ExchangeOrder seq>
+    | GetOrdersForSignal of int64 * AsyncReplyChannel<Result<ExchangeOrder seq, exn>>
     
-    | GetExchangeOrder of int64 * AsyncReplyChannel<ExchangeOrder option>
+    | GetExchangeOrder of int64 * AsyncReplyChannel<Result<ExchangeOrder option, exn>>
 
-    | GetTradedSymbols of int64 * AsyncReplyChannel<ExchangeSymbolAndTradeId seq>
+    | GetTradedSymbols of int64 * AsyncReplyChannel<Result<ExchangeSymbolAndTradeId seq, exn>>
 
 // using an agent to serialise actions to the db
 let private dbAgent =
@@ -323,43 +375,59 @@ let private dbAgent =
 
                 | GetSignalsToBuyOrSell replyCh ->
                     let! signals = getSignalsToBuyOrSell' |> withRetry 5
-                    replyCh.Reply signals
+                    replyCh.Reply (Ok signals)
 
                 | SetSignalsExpired (ss, replyCh) ->
                     do! ((fun () -> setSignalsExpired' ss) |> withRetry 5)
-                    replyCh.Reply ()
+                    replyCh.Reply (Ok ())
                 
                 | GetFuturesSignalCommands replyCh ->
                     let! signalCommands = getFuturesSignalCommands' |> withRetry 5
-                    replyCh.Reply signalCommands
+                    replyCh.Reply (Ok signalCommands)
 
                 | SetSignalCommandComplete (ids, commandStatus, replyCh) ->
                     do! ((fun () -> setSignalCommandsComplete' ids commandStatus) |> withRetry 5)
-                    replyCh.Reply ()
+                    replyCh.Reply (Ok ())
             
                 | SaveOrder (d, t, replyCh) ->
                     let! orderId = (fun () -> saveOrder' d t) |> withRetry 5
-                    replyCh.Reply orderId
+                    replyCh.Reply (Ok orderId)
                                 
                 | GetOrdersForSignal (signalId, replyCh) ->
                     let! orders = getOrdersForSignal' |> withRetry' 5 signalId
-                    replyCh.Reply orders
+                    replyCh.Reply (Ok orders)
 
                 | GetExchangeOrder (id, replyCh) ->
                     let! order = getExchangeOrder' |> withRetry' 5 id
-                    replyCh.Reply order
+                    replyCh.Reply (Ok order)
 
                 | GetTradedSymbols (exchangeId, replyCh) ->
                     let! symbols = getTradedSymbols' exchangeId
-                    replyCh.Reply symbols
+                    replyCh.Reply (Ok symbols)
 
                 | GetPositionSize (signalId, replyCh) ->
                     let! positionSize = getPositionSize' |> withRetry' 5 signalId
-                    replyCh.Reply positionSize
+                    replyCh.Reply (Ok positionSize)
+
+                | GetPosition (exchangeId, symbol, positionSide, replyCh) ->
+                    let! position = getPosition' exchangeId symbol |> withRetry' 5 positionSide
+                    replyCh.Reply (Ok position)
+
             with 
-                | e ->
+                | e -> 
                     Log.Error (e, "Error handling db command: {DbCommand}", msg)
-                    raise e
+                    // ugly! but need to properly return error - rather than crash here
+                    match msg with
+                    | GetSignalsToBuyOrSell replyCh            -> replyCh.Reply (Result.Error e)
+                    | SetSignalsExpired (_, replyCh)           -> replyCh.Reply (Result.Error e)
+                    | GetFuturesSignalCommands replyCh         -> replyCh.Reply (Result.Error e)
+                    | SetSignalCommandComplete (_, _, replyCh) -> replyCh.Reply (Result.Error e)
+                    | SaveOrder (_, _, replyCh)                -> replyCh.Reply (Result.Error e)
+                    | GetOrdersForSignal (_, replyCh)          -> replyCh.Reply (Result.Error e)
+                    | GetExchangeOrder (_, replyCh)            -> replyCh.Reply (Result.Error e)
+                    | GetTradedSymbols (_, replyCh)            -> replyCh.Reply (Result.Error e)
+                    | GetPositionSize (_, replyCh)             -> replyCh.Reply (Result.Error e)
+                    | GetPosition (_, _, _, replyCh)           -> replyCh.Reply (Result.Error e)
 
             return! messageLoop()
         }
@@ -370,14 +438,7 @@ let getSignalsToBuyOrSell () = dbAgent.PostAndAsyncReply GetSignalsToBuyOrSell
 
 let setSignalsExpired signals = dbAgent.PostAndAsyncReply (fun replyCh -> SetSignalsExpired (signals, replyCh))
 
-let saveOrder order tradeMode = 
-    async {
-        try
-            let! result = dbAgent.PostAndAsyncReply (fun replyCh -> SaveOrder (order, tradeMode, replyCh))
-            return Ok result
-        with
-            | e -> return Result.Error e
-    }
+let saveOrder order tradeMode = dbAgent.PostAndAsyncReply (fun replyCh -> SaveOrder (order, tradeMode, replyCh))
 
 let getOrdersForSignal signalId = dbAgent.PostAndAsyncReply (fun replyCh -> GetOrdersForSignal (signalId, replyCh))
 
@@ -386,22 +447,15 @@ let getExchangeOrder id = dbAgent.PostAndAsyncReply (fun replyCh -> GetExchangeO
 let getTradedSymbols exchangeId = dbAgent.PostAndAsyncReply (fun replyCh -> GetTradedSymbols (exchangeId, replyCh))
 
 // Futures
-let getFuturesSignalCommands () = dbAgent.PostAndAsyncReply (fun replyCh -> GetFuturesSignalCommands (replyCh))
+let getFuturesSignalCommands () = 
+    dbAgent.PostAndAsyncReply GetFuturesSignalCommands
 
 let setSignalCommandsComplete commandIds commandStatus = 
-    async {
-        try
-            do! dbAgent.PostAndAsyncReply (fun replyCh -> SetSignalCommandComplete (commandIds, commandStatus, replyCh))
-            return (Ok ())
-        with
-        | e -> return Result.Error e
-    }
+    dbAgent.PostAndAsyncReply (fun replyCh -> SetSignalCommandComplete (commandIds, commandStatus, replyCh))
 
 let getPositionSize (signalId: SignalId) = 
-    async {
-        try
-            let! result = dbAgent.PostAndAsyncReply (fun replyCh -> GetPositionSize (signalId, replyCh))
-            return Ok result
-        with
-            | e -> return Result.Error e
-    }
+    dbAgent.PostAndAsyncReply (fun replyCh -> GetPositionSize (signalId, replyCh))
+
+let getPosition (exchangeId: ExchangeId) (symbol: Symbol) (positionSide: PositionSide) = 
+    dbAgent.PostAndAsyncReply (fun replyCh -> GetPosition (exchangeId, symbol, positionSide, replyCh))
+

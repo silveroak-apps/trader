@@ -40,6 +40,7 @@ let toExchangePosition (p: BybitLinearPosition) : Types.ExchangePosition =
             | "Buy"     -> PositionSide.LONG
             | "Sell"    -> PositionSide.SHORT
             | _         -> PositionSide.NOT_APPLICABLE
+        ExchangeId = Types.ExchangeId Bybit.Futures.Common.ExchangeId
         Symbol = Symbol p.Symbol
         EntryPrice = p.EntryPrice.GetValueOrDefault () |> decimal
         MarkPrice = 0M // doesn't look like the api returns this
@@ -59,6 +60,7 @@ let private toExchangePosition' (p: BybitPosition) : Types.ExchangePosition =
             | "Buy"     -> PositionSide.LONG
             | "Sell"    -> PositionSide.SHORT
             | _         -> PositionSide.NOT_APPLICABLE
+        ExchangeId = Types.ExchangeId Bybit.Futures.Common.ExchangeId
         Symbol = Symbol p.Symbol
         EntryPrice = p.EntryPrice.GetValueOrDefault () |> decimal
         MarkPrice = 0M // doesn't look like the api returns this

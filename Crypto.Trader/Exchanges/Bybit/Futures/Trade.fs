@@ -68,27 +68,45 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
             | PositionSide.LONG, OrderSide.SELL     -> true
             | PositionSide.SHORT, OrderSide.BUY     -> true
             | _,_                                   -> false
+        
+        let orderSide = orderSideFrom o.OrderSide
+        let orderType = orderTypeFrom o.OrderType
+        let price = float (o.Price / 1M<price>)
+        
         let responseTask =
             match getFuturesMode o.Symbol with
             | COINM -> 
+                let qty = int <| o.Quantity / 1M<qty>
+                
+                Log.Debug("Bybit placeOrder (signalCommand: {CommandId}): {OrderSide}, {OrderType}, {Qty} @ {Price}", 
+                    o.SignalCommandId,
+                    orderSide, orderType, qty, price, reduceOnly)
+
                 coinMClient.OrderNewAsync(
-                    orderSideFrom o.OrderSide,
+                    orderSide,
                     symbol,
-                    orderTypeFrom o.OrderType,
-                    o.Quantity / 1M<qty> |> int,
+                    orderType,
+                    qty,
                     timeInForce,
-                    price = float (o.Price / 1M<price>),
+                    price = price,
                     reduceOnly = reduceOnly,
                     orderLinkId = orderLinkId
                 )
             | USDT ->
+
+                let qty = float <| o.Quantity / 1M<qty>
+
+                Log.Debug("Bybit placeOrder (signalCommand: {CommandId}): {OrderSide}, {OrderType}, {Qty} @ {Price}, reduceOnly: {ReduceOnly}.", 
+                    o.SignalCommandId,
+                    orderSide, orderType, qty, price, reduceOnly)
+
                 usdtClient.LinearOrderNewAsync(
                     symbol, 
                     orderSideFrom o.OrderSide,
                     orderTypeFrom o.OrderType,
                     timeInForce,
-                    float <| (o.Quantity / 1M<qty>),
-                    float (o.Price / 1M<price>),
+                    qty,
+                    price,
                     reduceOnly = reduceOnly, 
                     closeOnTrigger = false,
                     orderLinkId = orderLinkId
@@ -98,11 +116,11 @@ let placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>> =
         
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
-        Log.Debug("response: {Response}", orderResponse)
+        Log.Debug("Bybit placeOrder response: {Response}", orderResponse)
         let result = 
-            if orderResponse.RetCode = Nullable 0M
+            if orderResponse.RetCode ?= 0M
             then 
-                let jResultObj      = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
+                let jResultObj    = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
                 let orderResponse = jResultObj.ToObject<ByBitOrderResponseResult>()
                 toOrderInfoResult orderResponse
             else 
@@ -126,10 +144,10 @@ let queryOrderStatus (o: OrderQueryInfo) =
         let! response = responseTask |> Async.AwaitTask
         let jobj = response :?> Newtonsoft.Json.Linq.JObject
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
-        Log.Debug("Bybit query response: {Response}", orderResponse)
-        if Nullable.Equals(orderResponse.RetCode, 0M)
+        Log.Debug("Bybit queryOrder response: {Response}", orderResponse)
+        if orderResponse.RetCode ?= 0M
         then 
-            let jResultObj      = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
+            let jResultObj    = orderResponse.Result :?> Newtonsoft.Json.Linq.JObject
             let orderResponse = jResultObj.ToObject<ByBitOrderResponseResult>()
             return mapOrderStatus {| 
                                     Status = orderResponse.OrderStatus
@@ -155,11 +173,14 @@ let cancelOrder (o: OrderQueryInfo) =
         let jobj = cancelResponse :?> Newtonsoft.Json.Linq.JObject
         let orderResponse = jobj.ToObject<BybitOrderResponse>()
 
-        Log.Debug("Bybit cancel order response: {Response}", orderResponse)
+        Log.Debug("Bybit cancelOrder response: {Response}", orderResponse)
         return 
             if orderResponse.RetCode ?= 0M
             then Ok true
             elif orderResponse.RetCode ?= 130010M // order not exists or too late to cancel: happens when order was already filled by the time cancellation was attempted
+              || orderResponse.RetCode ?= 130037M // order already cancelled (usdt)
+              || orderResponse.RetCode ?= 30032M  // already filled or cancelled (coin-m)
+              || orderResponse.RetCode ?= 30037M  // already cancelled (coin-m)
             then Ok false
             else Error (sprintf "%A: %s" orderResponse.RetCode orderResponse.RetMsg)
     }

@@ -13,6 +13,11 @@ open System.Data
 // seems to cause problems
 // DefaultTypeMap.MatchNamesWithUnderscores <- true
 
+let mapNullable (mapper: 'T -> 'TOut) (n: Nullable<'T>) =
+    if n.HasValue
+    then mapper n.Value |> Nullable
+    else Nullable<'TOut>()
+
 let unspecToUtcKind (dt: DateTime) = 
     if dt.Kind = DateTimeKind.Unspecified 
     then DateTime.SpecifyKind(dt, DateTimeKind.Utc) 

@@ -35,20 +35,20 @@ let mapOrderStatus
     | Enums.OrderStatus.Rejected        -> OrderCancelled (Qty 0M, Price 0M)
     | status                            -> OrderQueryFailed (sprintf "Unrecognised order status: %A" status)
 
-let private toOrderInfoResult (orderData: BinanceFuturesPlacedOrder) =
+let private toOrderInfoResult (originalPrice: decimal) (orderData: BinanceFuturesPlacedOrder) =
     {
         OrderInfo.OrderId = OrderId (string orderData.OrderId)
         ClientOrderId = ClientOrderId orderData.ClientOrderId
         ExecutedQuantity = Qty orderData.ExecutedQuantity
         Time = orderData.UpdateTime |> DateTimeOffset
         Quantity = Qty orderData.OriginalQuantity
-        Price = Price orderData.AvgPrice
+        Price = Price originalPrice
         Symbol = Symbol orderData.Symbol
         Status = 
             mapOrderStatus {| 
                                 Status = orderData.Status
                                 ExecutedQuantity = orderData.ExecutedQuantity
-                                AvgPrice = orderData.AvgPrice |}
+                                AvgPrice = originalPrice |}
     } |> Ok
 
 let private orderTypeFrom (ot: OrderType) = 
@@ -93,7 +93,7 @@ let private placeOrder (o: OrderInputInfo) : Async<Result<OrderInfo, OrderError>
             |> Async.AwaitTask
         let result = 
             if orderResponse.Success
-            then toOrderInfoResult orderResponse.Data
+            then toOrderInfoResult (o.Price / 1M<price>) orderResponse.Data
             else 
                 Error(OrderError(sprintf "%A: %s" orderResponse.Error.Code orderResponse.Error.Message))
         return result

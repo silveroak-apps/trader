@@ -90,6 +90,7 @@ type StopLossTests (output: Xunit.Abstractions.ITestOutputHelper) =
             StoplossPnlPercentValue = prevSLPercent
             IsStoppedOut = false
             CloseRaisedTime = None
+            PositionInDb = None
         }
 
     let runTest leverage gainValuesWithLeverage previousSLValuesWithLeverage expectedSLValues = 

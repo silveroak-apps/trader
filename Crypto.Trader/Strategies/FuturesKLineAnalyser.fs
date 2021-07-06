@@ -78,18 +78,18 @@ let private raiseEvent (exchangeId: ExchangeId) (a: SignalAction) (p: PositionSi
         let candleDataTooOld = candleDataAge > TimeSpan.FromMinutes (float candle.IntervalMinutes * 1.2)
         if candleDataTooOld
         then
-            Log.Debug ("Error raising event: Candle data is out of date for exchange {Exchange}, symbol: {Symbol}. Diff: {TimeDiff}",
+            Log.Warning ("Error raising event: Candle data is out of date for exchange {Exchange}, symbol: {Symbol}. Diff: {TimeDiff}",
                     exchangeId, 
                     candle.Symbol,
                     candleDataAge)
         elif raisedSameEventRecently
         then
-            Log.Debug ("Not raising event: raised an event recently at {LastTimeWeRaised} ({X} mins ago), we don't raise another one within {Y} mins.",
+            Log.Information ("Not raising event: raised an event recently at {LastTimeWeRaised} ({X} mins ago), we don't raise another one within {Y} mins.",
                 raisedEvents.[eventKey],
                 (candleCloseTime - raisedEvents.[eventKey]).TotalMinutes,
                 recentEventToleranceMinutes)
         else
-            Log.Information ("About to raise a market event for {Action} {PositionSide} {Symbol}, candle age: {CandleDataAge}: ",
+            Log.Debug ("About to raise a market event for {Action} {PositionSide} {Symbol}, candle age: {CandleDataAge}: ",
                 a, p, candle.Symbol,  candleDataAge)
             let (Symbol symbol) = candle.Symbol
             let! exchange = Trader.Exchanges.lookupExchange exchangeId
@@ -177,18 +177,18 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: Analysis.HeikenA
 
                 twoPreviousFTCandles && oneDecreasingCloses && oneDecreasingLows
 
-            Log.Debug ("Analysing HA candles for {Exchange}:{Symbol}. Open: {OpenTime}, Interval: {IntervalMinutes}. " + 
-                "FB Low-Open: {FBDiff} {FB}, FT High-Open: {FTDiff} {FT}, " +
-                "Colour: {LatestClosedCandleColour}, " + 
-                "IsLatestCandleLive: {IsLatestCandleLive}, " +
-                "LatestClosedCandle: {LatestClosedCandle}",
-                    exchangeId, string latestCandle.Symbol, latestCandle.OpenTime, latestCandle.IntervalMinutes,
-                    latestClosedCandle.Low - latestClosedCandle.Open, isFlatBottom latestClosedCandle,
-                    latestClosedCandle.High - latestClosedCandle.Open, isFlatTop latestClosedCandle,
-                    (if latestClosedCandle.Close > latestClosedCandle.Open then "Green" elif latestClosedCandle.Close < latestClosedCandle.Open then "Red" else "Flat"),
-                    isLatestCandleLive,
-                    latestClosedCandle
-                )
+            // Log.Debug ("Analysing HA candles for {Exchange}:{Symbol}. Open: {OpenTime}, Interval: {IntervalMinutes}. " + 
+            //     "FB Low-Open: {FBDiff} {FB}, FT High-Open: {FTDiff} {FT}, " +
+            //     "Colour: {LatestClosedCandleColour}, " + 
+            //     "IsLatestCandleLive: {IsLatestCandleLive}, " +
+            //     "LatestClosedCandle: {LatestClosedCandle}",
+            //         exchangeId, string latestCandle.Symbol, latestCandle.OpenTime, latestCandle.IntervalMinutes,
+            //         latestClosedCandle.Low - latestClosedCandle.Open, isFlatBottom latestClosedCandle,
+            //         latestClosedCandle.High - latestClosedCandle.Open, isFlatTop latestClosedCandle,
+            //         (if latestClosedCandle.Close > latestClosedCandle.Open then "Green" elif latestClosedCandle.Close < latestClosedCandle.Open then "Red" else "Flat"),
+            //         isLatestCandleLive,
+            //         latestClosedCandle
+            //     )
 
             return!
                 if shouldOpenLong
@@ -196,8 +196,8 @@ let private analyseCandles (exchangeId: ExchangeId) (haCandles: Analysis.HeikenA
                 elif shouldOpenShort
                 then raiseEvent exchangeId OPEN SHORT latestCandle
                 else AsyncResult.ofResult(Ok ())
-        else
-            Log.Warning ("Fewer than 3 candles so far from {ExchangeId}, ignoring...", exchangeId)
+        // else
+        //     Log.Warning ("Fewer than 3 candles so far from {ExchangeId}, ignoring...", exchangeId)
 
     } |> Async.map (Result.teeError logKLineError)
 
@@ -228,7 +228,7 @@ let private teeUpdateFetchTime (exchangeId: ExchangeId) (symbol: Symbol) (candle
                 |> (fun c -> c.OpenTime)
             else DateTimeOffset.MinValue
 
-        Log.Debug ("Storing fetch time for key {CandleKey}: {Time}", candleKey, fetchTime)
+        //Log.Verbose ("Storing fetch time for key {CandleKey}: {Time}", candleKey, fetchTime)
         candlesFetchTimes.[candleKey] <- fetchTime
 
     candles 
@@ -247,11 +247,11 @@ let rec private repeatEveryInterval (intervalFn: unit -> TimeSpan) (fn: unit -> 
             let sw = Stopwatch.StartNew ()
             do! fn ()
             sw.Stop ()
-            Log.Verbose ("{TimerFunctionName} took {TimerFunctionDuration} milliseconds", nameForLogging, sw.Elapsed.TotalMilliseconds)
+            //Log.Verbose ("{TimerFunctionName} took {TimerFunctionDuration} milliseconds", nameForLogging, sw.Elapsed.TotalMilliseconds)
         with e -> Log.Warning (e, "Error running function {TimerFunctionName} on timer. Continuing next time...", nameForLogging)
 
         let interval = intervalFn()
-        Log.Verbose ("Waiting for {Interval} before another KLine fetch", interval)
+        //Log.Verbose ("Waiting for {Interval} before another KLine fetch", interval)
         do! Async.Sleep (int interval.TotalMilliseconds)
         do! repeatEveryInterval intervalFn fn nameForLogging 
     }

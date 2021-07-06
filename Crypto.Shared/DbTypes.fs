@@ -28,6 +28,30 @@ type FuturesSignalCommandView = {
     Status: string
 }
 
+type FuturesPositionPnlView = {
+    SignalId: int64
+    Symbol: string
+    PositionType: string
+    ExchangeId: int64 
+    StrategyPairName: string
+    SignalStatus: string
+    PositionStatus: string
+    ExecutedBuyQty: decimal
+    PendingBuyQty: decimal
+    ExecutedSellQty: decimal
+    PendingSellQty: decimal
+    OpenCommandsCount: int64
+    CloseCommandsCount: int64
+    PendingCommandsCount: int64
+    EntryPrice: decimal
+    ClosePrice: decimal
+    EntryTime: DateTime
+    ExitTime: DateTime
+    Pnl: decimal
+    PnlPercent: decimal
+    PositionSize: decimal
+}
+
 type ExchangeOrder = {
     Id: int64
     Status: string
