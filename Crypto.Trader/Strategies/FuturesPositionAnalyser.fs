@@ -224,9 +224,9 @@ let private fetchPosition (exchange: IFuturesExchange) (p: ExchangePosition) =
 
 // input magic numbers for calculating stoploss from config: see story 127 // % - TODO move to config
 
-let minStopLoss = -0.5M
-let stopLossTriggerLevel = 0.3M
-let stopLossFactor = 0.4M
+let minStopLoss = -1.5M
+let stopLossTriggerLevel = 2M
+let stopLossFactor = 0.8M
 
 let calculateStopLoss (position: PositionAnalysis) (currentGain: decimal option) =
 
