@@ -228,6 +228,7 @@ let minStopLoss = -1.5M
 let stopLossTriggerLevel = 0M
 let stopLossFactor = 0.03M
 
+
 let calculateStopLoss (position: PositionAnalysis) (currentGain: decimal option) =
 
     // inputs to calc

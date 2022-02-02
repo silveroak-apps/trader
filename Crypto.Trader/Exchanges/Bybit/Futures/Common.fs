@@ -97,7 +97,7 @@ let usdtSymbols =
    dict [
         (Symbol "BTCUSDT",  { Multiplier = 1 })
         (Symbol "ETHUSDT",  { Multiplier = 1 })
-     //   (Symbol "DOGEUSDT", { Multiplier = 1 })
+        (Symbol "BNBUSDT", { Multiplier = 1 })
         // (Symbol "LTCUSDT", { Multiplier = 1 })
         // (Symbol "LINKUSDT", { Multiplier = 1 })
         // (Symbol "ADAUSDT", { Multiplier = 1 })
