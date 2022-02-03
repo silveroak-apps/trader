@@ -64,6 +64,7 @@
     <EmbeddedResource Include="Scripts\Script 0044 - Insert exchange ByBit Futures.sql"/>
     <EmbeddedResource Include="Scripts\Script 0045 - Alter Strategy with Exchange.sql"/>
     <EmbeddedResource Include="Scripts\Script 0046 - InsertConfigTable.sql"/>
+    <EmbeddedResource Include="Scripts\Script 0047 - Cleanup and rename signals tables.sql"/>
     <Content Include="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
