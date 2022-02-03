@@ -19,5 +19,5 @@ select fp.*,
 		else -1
 	end AS position_size
 from futures_positions fp
-	join futures_signal fs2 on fs2.signal_id = fp.signal_id
+	join signal fs2 on fs2.signal_id = fp.signal_id
 order by signal_id desc

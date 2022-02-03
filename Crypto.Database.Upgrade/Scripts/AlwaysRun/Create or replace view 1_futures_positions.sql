@@ -48,27 +48,27 @@ AS SELECT fs2.signal_id,
         WHEN fs2.position_type = 'LONG' THEN sell.last_order_time
         ELSE buy.last_order_time
     END AS exit_time
-   FROM futures_signal fs2
+   FROM signal fs2
      LEFT JOIN ( SELECT 
-            futures_signal_command.signal_id,
-            count(futures_signal_command.signal_id) AS commandcount
-           FROM futures_signal_command
-          WHERE futures_signal_command.signal_action = 'OPEN' AND futures_signal_command.status NOT IN ('EXPIRED', 'FAILED')
-          GROUP BY futures_signal_command.signal_id
+            signal_command.signal_id,
+            count(signal_command.signal_id) AS commandcount
+           FROM signal_command
+          WHERE signal_command.signal_action = 'OPEN' AND signal_command.status NOT IN ('EXPIRED', 'FAILED')
+          GROUP BY signal_command.signal_id
          ) open_commands ON open_commands.signal_id = fs2.signal_id
      LEFT JOIN ( SELECT
-            futures_signal_command.signal_id,
-            count(futures_signal_command.signal_id) AS commandcount
-           FROM futures_signal_command
-          WHERE futures_signal_command.signal_action = 'CLOSE' AND futures_signal_command.status NOT IN ('EXPIRED', 'FAILED')
-          GROUP BY futures_signal_command.signal_id
+            signal_command.signal_id,
+            count(signal_command.signal_id) AS commandcount
+           FROM signal_command
+          WHERE signal_command.signal_action = 'CLOSE' AND signal_command.status NOT IN ('EXPIRED', 'FAILED')
+          GROUP BY signal_command.signal_id
          ) close_commands ON close_commands.signal_id = fs2.signal_id
      LEFT JOIN ( SELECT
-            futures_signal_command.signal_id,
-            count(futures_signal_command.signal_id) AS commandcount
-          FROM futures_signal_command
-          WHERE futures_signal_command.status = 'CREATED'
-          GROUP BY futures_signal_command.signal_id
+            signal_command.signal_id,
+            count(signal_command.signal_id) AS commandcount
+          FROM signal_command
+          WHERE signal_command.status = 'CREATED'
+          GROUP BY signal_command.signal_id
          ) pending_commands ON pending_commands.signal_id = fs2.signal_id
      LEFT JOIN ( SELECT signal_order_summary.signal_id,
             signal_order_summary.order_side,
@@ -92,8 +92,8 @@ AS SELECT fs2.signal_id,
            FROM signal_order_summary
           WHERE signal_order_summary.order_side = 'SELL' AND signal_order_summary.executed_qty > 0
           GROUP BY signal_order_summary.order_side, signal_order_summary.signal_id) sell ON sell.signal_id = fs2.signal_id
-     LEFT JOIN ( SELECT futures_signal.signal_id,
-            min(futures_signal.strategy_pair_name) AS strategy_pair_name
-           FROM futures_signal
-          GROUP BY futures_signal.signal_id) fs3 ON fs3.signal_id = fs2.signal_id
+     LEFT JOIN ( SELECT signal.signal_id,
+            min(signal.strategy_pair_name) AS strategy_pair_name
+           FROM signal
+          GROUP BY signal.signal_id) fs3 ON fs3.signal_id = fs2.signal_id
     ORDER BY signal_id desc;

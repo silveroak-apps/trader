@@ -15,7 +15,7 @@ AS SELECT fs2.signal_id, exorder.status, exorder.order_side,
 			when exorder.status not in ('CANCELED', 'REJECTED', 'ERROR') then COALESCE(count(exorder.id), 0)  
 			else 0 
 		end AS order_count
-	FROM futures_signal fs2
+	FROM signal fs2
 	    LEFT JOIN exchange_order exorder ON exorder.signal_id = fs2.signal_id 
 		LEFT JOIN exchange_order executedOrder ON executedOrder.signal_id = fs2.signal_id AND executedOrder.id = exorder.id AND executedOrder.executed_qty > 0 
 GROUP BY fs2.signal_id, exorder.status, exorder.order_side;
