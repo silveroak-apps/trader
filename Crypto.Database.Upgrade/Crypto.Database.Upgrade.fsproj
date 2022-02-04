@@ -11,9 +11,6 @@
     <None Include="ManualUpdates\reset-sell-analysis-for-signal.sql" />
     <None Include="ManualUpdates\reset-sell-signal-to-force-sell-now.sql" />
 
-    <EmbeddedResource Include="Scripts\AlwaysRun\Create view overview.sql" />
-    <EmbeddedResource Include="Scripts\AlwaysRun\Create view summary.sql" />
-    <EmbeddedResource Include="Scripts\AlwaysRun\Create or Replace view overview sell analysis.sql" />
     <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 0_signal_order_summary.sql" />
     <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 1_futures_positions.sql" />
     <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 2_futures_pnl.sql" />
