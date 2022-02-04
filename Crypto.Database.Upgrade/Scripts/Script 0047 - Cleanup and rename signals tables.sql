@@ -5,15 +5,15 @@ ALTER TABLE sell_analysis DROP CONSTRAINT fk_sell_analysis2_signal;
 DROP view webview;
 DROP view overview_buy_analysis;
 DROP view overview_sell_analysis;
-DROP view overview;
 DROP view summary;
+DROP view overview;
 drop table positive_signal;
 drop table positive_signal_excel;
 ALTER TABLE signal  ADD COLUMN strategy_pair_id bigserial;
 
 ALTER TABLE signal_command ADD COLUMN strategy_condition_id bigserial;
 
-ALTER TABLE singnal 
+ALTER TABLE signal 
 ADD CONSTRAINT fk_strategy_pair 
 FOREIGN KEY (strategy_pair_id) 
 REFERENCES strategy (id);
