@@ -2,11 +2,11 @@ ALTER TABLE futures_signal RENAME TO signal;
 ALTER TABLE futures_signal_command RENAME TO signal_command;
 
 ALTER TABLE sell_analysis DROP CONSTRAINT fk_sell_analysis2_signal;
-DROP view webview
-DROP view overview_buy_analysis
-DROP view overview_sell_analysis
-DROP view overview
-DROP view summary
+DROP view webview;
+DROP view overview_buy_analysis;
+DROP view overview_sell_analysis;
+DROP view overview;
+DROP view summary;
 drop table positive_signal;
 drop table positive_signal_excel;
 ALTER TABLE signal  ADD COLUMN strategy_pair_id bigserial;
