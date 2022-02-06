@@ -56,7 +56,7 @@ let calcSlippage (orderSide: OrderSide) orderBookPrice desiredPrice =
     | SELL -> ( desiredPrice - orderBookPrice ) * 100M / desiredPrice
     | _    ->  0M // not relevant won't happen :/
 
-let private determineOrderBookPrice (exchange: IExchange) (s: FuturesSignalCommandView) =
+let private determineOrderBookPrice (exchange: IExchange) (s: SignalCommandView) =
     asyncResult {
         let positionSide = PositionSide.FromString s.PositionType
         let! orderSide = findOrderSide positionSide (SignalAction.FromString s.Action)
@@ -68,7 +68,7 @@ let private determineOrderBookPrice (exchange: IExchange) (s: FuturesSignalComma
         }
     }
 
-let toExchangeOrder (signalCommand: FuturesSignalCommandView) (o: OrderInfo) = 
+let toExchangeOrder (signalCommand: SignalCommandView) (o: OrderInfo) = 
     let orderSide = findOrderSide (PositionSide.FromString signalCommand.PositionType) (SignalAction.FromString signalCommand.Action)
     let (OrderId oid) = o.OrderId
     Result.map (fun os ->
@@ -95,7 +95,7 @@ let toExchangeOrder (signalCommand: FuturesSignalCommandView) (o: OrderInfo) =
             }
         ) orderSide
 
-let placeOrder (exchange: IExchange) (s: FuturesSignalCommandView) (bestOrderPrice: decimal) =
+let placeOrder (exchange: IExchange) (s: SignalCommandView) (bestOrderPrice: decimal) =
     asyncResult {
         Log.Information ("Placing an order for command {Command} for signal {SignalId} using exchange {Exchange}", s, s.SignalId, exchange.GetType().Name)
 
@@ -144,7 +144,7 @@ let private delay = TimeSpan.FromSeconds(1.0)
 // TODO: we need to start identifying what sort of things can be retried, and what can't
 // eg. rejected orders won't work unless the inputs are changed
 
-let placeOrderWithRetryOnError (exchange: IExchange) (signalCmd: FuturesSignalCommandView) (bestOrderPrice: decimal) =
+let placeOrderWithRetryOnError (exchange: IExchange) (signalCmd: SignalCommandView) (bestOrderPrice: decimal) =
     // retry 'retryCount' times, in quick succession if there is an error placing an order
     let placeOrder' () = placeOrder exchange signalCmd bestOrderPrice
     placeOrder' |> withRetryOnErrorResult retryCount delay "placeOrderWithRetryOnError" () isAlwaysRetryable
@@ -228,7 +228,7 @@ let private getFilledQty (orders: ExchangeOrder seq) =
 let private getUpdatedCommandWithRemainingQty 
     (getPositionSizeFromDataStore: SignalId -> Async<Result<decimal, exn>>)
     (ordersSoFar: ExchangeOrder list)
-    (signalCommand: FuturesSignalCommandView) =
+    (signalCommand: SignalCommandView) =
 
     asyncResult {
         let! openedPositionSize = getPositionSizeFromDataStore (SignalId signalCommand.SignalId)
@@ -253,7 +253,7 @@ type private TradeFlowWaitResult =
 | PriceMoved of ExchangeOrder
 | OrderFilled of ExchangeOrder
 
-let rec private waitForOrderFillOrPriceMovementOrMaxTime (waitInterval: TimeSpan) (maxRetryTime: TimeSpan) (exchange: IExchange) (signalCommand: FuturesSignalCommandView) (order: ExchangeOrder) =
+let rec private waitForOrderFillOrPriceMovementOrMaxTime (waitInterval: TimeSpan) (maxRetryTime: TimeSpan) (exchange: IExchange) (signalCommand: SignalCommandView) (order: ExchangeOrder) =
     asyncResult {
 
         // wait for a bit and check price and order status
@@ -303,7 +303,7 @@ let rec executeOrdersForCommand
     (maxWaitTime: TimeSpan)
     (maxAttempts: int) 
     (attempt: int)
-    (signalCommand: FuturesSignalCommandView) =
+    (signalCommand: SignalCommandView) =
 
     asyncResult {
 
@@ -454,7 +454,7 @@ let rec executeOrdersForCommand
     }
 
 type private TradeAgentCommand = 
-    | FuturesTrade of FuturesSignalCommandView * bool * AsyncReplyChannel<unit>
+    | Trade of SignalCommandView * bool * AsyncReplyChannel<unit>
 
 // serialising calls to placeOrder to be safe
 let private mkTradeAgent 
@@ -478,7 +478,7 @@ let private mkTradeAgent
     let agent = 
         MailboxProcessor<TradeAgentCommand>.Start (fun inbox ->
             let rec messageLoop() = async {
-                let! (FuturesTrade (s, placeRealOrders, replyCh)) = inbox.Receive()
+                let! (Trade (s, placeRealOrders, replyCh)) = inbox.Receive()
                 use _ = LogContext.PushProperty("SignalId", s.SignalId)
                 use _ = LogContext.PushProperty("SignalCommandId", s.Id)
 
@@ -555,22 +555,21 @@ let private mkTradeAgent
 let mutable private tradeAgent: MailboxProcessor<TradeAgentCommand> option = None
 
 let processValidSignals
-    (getFuturesSignalCommands: unit -> Async<Result<FuturesSignalCommandView seq, exn>>)
+    (getSignalCommands: unit -> Async<Result<SignalCommandView seq, exn>>)
     (completeSignalCommands: SignalCommandId seq -> SignalCommandStatus -> Async<Result<unit, exn>>)
-    (getExchangeOrder: int64 -> Async<Result<ExchangeOrder option, exn>>)
-    (saveOrder: ExchangeOrder -> TradeMode -> Async<Result<int64, exn>>)
+    (saveOrder: ExchangeOrder -> Async<Result<int64, exn>>)
     (getPositionSize: SignalId -> Async<Result<decimal, exn>>)
     (placeRealOrders: bool) =
 
     let saveOrder' exo = 
         async {
-            let! exoIdResult = saveOrder exo FUTURES
+            let! exoIdResult = saveOrder exo
             return Result.map (fun exoId -> { exo with ExchangeOrder.Id = exoId }) exoIdResult
         }
     
     asyncResult {
         Log.Debug ("Getting signal commands to action")
-        let! signalCommands = getFuturesSignalCommands ()
+        let! signalCommands = getSignalCommands ()
         
         let countOfCommands = signalCommands |> Seq.length
         if countOfCommands > 0
@@ -581,9 +580,10 @@ let processValidSignals
             |> Seq.sortByDescending (fun s -> s.RequestDateTime) // we want the latest command for each signal
             |> Seq.distinctBy (fun s -> s.SignalId)  // this discards everything but the first occurrence in the sequence (which happens to be the latest due to the descending sort)
 
+        // anything older than 'n' seconds is too old (crypto trades can move fast)
         let oldCommands =
             latestCommands 
-            |> Seq.filter (fun s -> (DateTime.UtcNow - s.RequestDateTime).TotalSeconds > 100.0) // anything older than 10 seconds (futures moves fast)
+            |> Seq.filter (fun s -> (DateTime.UtcNow - s.RequestDateTime).TotalSeconds > 100.0) 
             
         let validCommands = latestCommands |> Seq.except oldCommands
 
@@ -591,13 +591,13 @@ let processValidSignals
         if tradeAgent = None then
             tradeAgent <- Some <| mkTradeAgent saveOrder' getPositionSize completeSignalCommands
 
-        do! 
+        do!
             validCommands
             |> AsyncSeq.ofSeq
             |> AsyncSeq.iterAsyncParallel (
-                fun s -> 
+                fun s ->
                     match tradeAgent with
-                    | Some agent -> agent.PostAndAsyncReply (fun replyCh -> FuturesTrade (s, placeRealOrders, replyCh))
+                    | Some agent -> agent.PostAndAsyncReply (fun replyCh -> Trade (s, placeRealOrders, replyCh))
                     | _ -> raise <| exn "Unexpected error: trade agent is not setup processing {SignalId}"
                 )
 

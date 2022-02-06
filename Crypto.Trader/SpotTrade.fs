@@ -354,10 +354,8 @@ let processValidSignals
     (getSignalsToBuyOrSell: unit -> Async<Result<seq<Signal>,exn>>)
     (expireSignals: seq<Signal> -> Async<Result<unit,exn>>)
     (getOrdersForSignal: int64 -> Async<Result<ExchangeOrder seq,exn>>)
-    (getExchangeOrder)
     (saveOrder)
     (placeRealOrders: bool) =
-    let saveOrder' exo = saveOrder exo SPOT
 
     asyncResult {
         if placeRealOrders then Log.Debug ("Getting signals to buy/sell")
@@ -377,7 +375,7 @@ let processValidSignals
 
         // ugly mutable for now :/
         if tradeAgent = None then
-            tradeAgent <- Some <| mkTradeAgent getOrdersForSignal saveOrder'
+            tradeAgent <- Some <| mkTradeAgent getOrdersForSignal saveOrder
 
         do! 
             validSignals

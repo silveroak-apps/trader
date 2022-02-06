@@ -32,11 +32,11 @@ type PositionAnalysis = {
     StoplossPnlPercentValue: decimal option // Stop loss expressed in terms of Pnl percent (not price)
     IsStoppedOut: bool
     CloseRaisedTime: DateTime option
-    PositionInDb: FuturesPositionPnlView option // corresponding position in db, if found
+    PositionInDb: PositionPnlView option // corresponding position in db, if found
 }
 
 // alias
-type GetPositionsFromDataStore = ExchangeId -> Symbol -> PositionSide -> Async<Result<FuturesPositionPnlView option, exn>>
+type GetPositionsFromDataStore = ExchangeId -> Symbol -> PositionSide -> Async<Result<PositionPnlView option, exn>>
 
 let private maybeSignalId (pos: PositionAnalysis) = 
     pos.PositionInDb |> Option.map (fun p -> p.SignalId) |> Option.defaultValue -1L
@@ -146,7 +146,7 @@ let private getPositionsFromExchange (exchange: IFuturesExchange) (symbol: Symbo
         return positions
     }
 
-let private savePositions (ps: (PositionAnalysis * FuturesPositionPnlView option) seq) = 
+let private savePositions (ps: (PositionAnalysis * PositionPnlView option) seq) = 
     ps 
     |> Seq.iter (fun (pos, posInDb) ->
             let key = makePositionKey pos
@@ -343,7 +343,7 @@ let private refreshPositions (getPositionsFromDataStore: GetPositionsFromDataSto
             removePositionsNotOnExchange exchange.Id exchangePositions
             Log.Information ("In-memory positions after cleaning up: {Positions}", positions.Values |> Seq.toList)
             
-            let! (positionsWithDbData: (PositionAnalysis * FuturesPositionPnlView option) array) = 
+            let! (positionsWithDbData: (PositionAnalysis * PositionPnlView option) array) = 
                 exchangePositions
                 |> Seq.map (fun p -> 
                         asyncResult {

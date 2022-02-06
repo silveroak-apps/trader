@@ -8,45 +8,6 @@ open FSharpx.Control
 open Types
 open System
 
-let private getSpotSignalUpdate (b: ExchangeOrder) =
-    let updateSignalSql = 
-        if String.Equals(b.OrderSide, "BUY", StringComparison.OrdinalIgnoreCase) then
-            "
-            UPDATE positive_signal 
-            SET status           = @Status,
-                actual_buy_price = @Price,
-                buy_date_time    = @DateTime
-            WHERE signal_id      = @SignalId
-                AND status NOT IN ('BUY_CANCELLED', 'BUY_FILLED', 'SELL', 'SELL_READY', 'SELL_NEW', 'SELL_STUCK', 'SELL_FILLED') 
-                -- these statuses mean the buy side is already finalised
-            "
-        else
-            "
-            UPDATE positive_signal 
-            SET status            = @Status,
-                actual_sell_price = @Price,
-                sell_date_time     = @DateTime
-            WHERE signal_id      = @SignalId
-                AND status NOT IN ('SELL_STUCK', 'SELL_FILLED')
-                -- these statuses is already finalised 
-            "
-    let actualOrderTime = 
-        // these statuses are not yet considered active statuses for an order
-        let isInActive =
-            [ "READY"; "ERROR"; "REJECTED"; ]
-            |> List.tryFind (fun s -> String.Equals(b.Status, s, StringComparison.OrdinalIgnoreCase))
-
-        if isInActive.IsSome then Nullable<DateTime>() else Nullable<DateTime> b.UpdatedTime
-
-    let signalUpdateParams = 
-        dict [
-          ("Status"  , (sprintf "%s_%s" b.OrderSide b.Status) :> obj) // this will be BUY_FILLED or SELL_FILLED, etc
-          ("Price"   , b.ExecutedPrice :> obj)
-          ("DateTime", actualOrderTime :> obj)
-          ("SignalId", b.SignalId :> obj)
-        ]
-    [ (updateSignalSql, signalUpdateParams :> obj) ]
-
 let private getTradedSymbols' exchangeId = 
     getWithParam<ExchangeSymbolAndTradeId> "
             SELECT o.symbol, COALESCE(MAX(o.last_trade_id), 0) AS tradeId
@@ -86,7 +47,7 @@ let private getSignalsToBuyOrSell' () =
     |> get<Signal>
     |> Async.map (Seq.map (fun s -> { s with SignalDateTime = unspecToUtcKind s.SignalDateTime }))
 
-let private getFuturesSignalCommands' () =
+let private getSignalCommands' () =
     "
     SELECT
         sc.id as Id,
@@ -102,12 +63,12 @@ let private getFuturesSignalCommands' () =
         sc.leverage as Leverage,
         sc.strategy_name as Strategy,
         sc.status as Status
-    FROM futures_signal s
-        JOIN futures_signal_command sc ON s.signal_id = sc.signal_id
-        JOIN futures_positions fp on s.signal_id = fp.signal_id
+    FROM signal s
+        JOIN signal_command sc ON s.signal_id = sc.signal_id
+        JOIN positions fp on s.signal_id = fp.signal_id
     WHERE sc.status = 'CREATED' AND fp.signal_status IN ('CREATED', 'ACTIVE')
     "
-    |> get<FuturesSignalCommandView>
+    |> get<SignalCommandView>
     |> Async.map (Seq.map (fun s -> { s with RequestDateTime = unspecToUtcKind s.RequestDateTime }))
 
 let private setSignalsExpired' (signals: Signal seq) =
@@ -122,14 +83,14 @@ let private setSignalsExpired' (signals: Signal seq) =
 
 let private setSignalCommandsComplete' (signalCommands: SignalCommandId seq) (status: SignalCommandStatus) =
     let updateSql = "
-        UPDATE futures_signal_command
+        UPDATE signal_command
         SET status = @Status, action_date_time = now() at time zone 'utc'
         WHERE id = @CommandId
     "
     signalCommands
     |> Seq.map (fun s -> 
         let (SignalCommandId scId) = s
-        updateSql, { FuturesSignalCommandStatusUpdate.CommandId = scId; Status = string status; } :> obj)
+        updateSql, { SignalCommandStatusUpdate.CommandId = scId; Status = string status; } :> obj)
     |> save
 
 let private getOrdersForSignal' (signalId: int64) = 
@@ -163,7 +124,7 @@ let private getPositionSize' (SignalId signalId) =
     async {
         let positionSql = "
             SELECT position_size
-            FROM futures_pnl 
+            FROM pnl 
             WHERE signal_id = @SignalId
         "
         let! result = getWithParam<decimal> positionSql ({ SignalIdParam.SignalId = signalId } :> obj)
@@ -203,7 +164,7 @@ let private getExchangeOrder' (id: int64) =
                 |> Seq.tryHead
     }
 
-let private saveOrderAndSignal (b: ExchangeOrder) (signalUpdates: seq<string * obj>) =
+let private saveOrder' (b: ExchangeOrder) =
     let insertOrderSql =
         "
         INSERT INTO exchange_order(
@@ -263,10 +224,6 @@ let private saveOrderAndSignal (b: ExchangeOrder) (signalUpdates: seq<string * o
         use tx = cnn.BeginTransaction ()
 
         try
-            if not <| (signalUpdates |> Seq.isEmpty)
-            then
-                do! saveUsing cnn signalUpdates
-
             let insertOrUpdateSql = if b.Id > 0L then updateOrderSql else insertOrderSql
             // this get is actually a 'save' order and return id
             let! orderId = getWithConnectionAndParam<int64> cnn insertOrUpdateSql b |> Async.map Seq.tryHead
@@ -279,17 +236,6 @@ let private saveOrderAndSignal (b: ExchangeOrder) (signalUpdates: seq<string * o
                 b,
                 if b.Id > 0L then "UPDATE" else "INSERT")            
             return -1L
-    }
-
-let private saveOrder' (exo: ExchangeOrder) (t: TradeMode) =
-    async {
-        let! signalUpdates =
-            match t with
-            | SPOT -> async { return (getSpotSignalUpdate exo) }
-            | _ -> async { return [] }
-
-        let! orderId = saveOrderAndSignal exo signalUpdates
-        return orderId
     }
 
 let private getPosition' (ExchangeId exchangeId) (Symbol s) (p: PositionSide) =
@@ -317,7 +263,7 @@ let private getPosition' (ExchangeId exchangeId) (Symbol s) (p: PositionSide) =
                     pnl as Pnl,
                     pnl_percent as PnlPercent,
                     position_size as PositionSize
-                FROM futures_pnl
+                FROM pnl
                 WHERE symbol = @Symbol 
                     AND position_type = @PositionSide 
                     AND exchange_id = @ExchangeId
@@ -326,7 +272,7 @@ let private getPosition' (ExchangeId exchangeId) (Symbol s) (p: PositionSide) =
                 LIMIT 1;
             "
         let! positions = 
-            getWithParam<FuturesPositionPnlView> getPositionsSql (
+            getWithParam<PositionPnlView> getPositionsSql (
                 {|
                     Symbol = s
                     ExchangeId = exchangeId
@@ -349,14 +295,15 @@ type private DbAgentCommand =
     | SetSignalsExpired of Signal seq * AsyncReplyChannel<Result<unit, exn>>
 
     // Futures only
-    | GetFuturesSignalCommands of AsyncReplyChannel<Result<FuturesSignalCommandView seq, exn>>
-    | SetSignalCommandComplete  of SignalCommandId seq * SignalCommandStatus * AsyncReplyChannel<Result<unit, exn>>
     | GetPositionSize of SignalId * AsyncReplyChannel<Result<decimal, exn>>
-    | GetPosition of ExchangeId * Symbol * PositionSide * AsyncReplyChannel<Result<FuturesPositionPnlView option, exn>>
+    | GetPosition of ExchangeId * Symbol * PositionSide * AsyncReplyChannel<Result<PositionPnlView option, exn>>
     
     // Common 
-    // Save order handles signal updates too :/
-    | SaveOrder of ExchangeOrder  * TradeMode * AsyncReplyChannel<Result<int64, exn>>
+    | GetSignalCommands of AsyncReplyChannel<Result<SignalCommandView seq, exn>>
+
+    | SetSignalCommandComplete  of SignalCommandId seq * SignalCommandStatus * AsyncReplyChannel<Result<unit, exn>>
+
+    | SaveOrder of ExchangeOrder * AsyncReplyChannel<Result<int64, exn>>
 
     | GetOrdersForSignal of int64 * AsyncReplyChannel<Result<ExchangeOrder seq, exn>>
     
@@ -381,16 +328,16 @@ let private dbAgent =
                     do! ((fun () -> setSignalsExpired' ss) |> withRetry 5)
                     replyCh.Reply (Ok ())
                 
-                | GetFuturesSignalCommands replyCh ->
-                    let! signalCommands = getFuturesSignalCommands' |> withRetry 5
+                | GetSignalCommands replyCh ->
+                    let! signalCommands = getSignalCommands' |> withRetry 5
                     replyCh.Reply (Ok signalCommands)
 
                 | SetSignalCommandComplete (ids, commandStatus, replyCh) ->
                     do! ((fun () -> setSignalCommandsComplete' ids commandStatus) |> withRetry 5)
                     replyCh.Reply (Ok ())
             
-                | SaveOrder (d, t, replyCh) ->
-                    let! orderId = (fun () -> saveOrder' d t) |> withRetry 5
+                | SaveOrder (d, replyCh) ->
+                    let! orderId = (fun () -> saveOrder' d) |> withRetry 5
                     replyCh.Reply (Ok orderId)
                                 
                 | GetOrdersForSignal (signalId, replyCh) ->
@@ -420,9 +367,9 @@ let private dbAgent =
                     match msg with
                     | GetSignalsToBuyOrSell replyCh            -> replyCh.Reply (Result.Error e)
                     | SetSignalsExpired (_, replyCh)           -> replyCh.Reply (Result.Error e)
-                    | GetFuturesSignalCommands replyCh         -> replyCh.Reply (Result.Error e)
+                    | GetSignalCommands replyCh                -> replyCh.Reply (Result.Error e)
                     | SetSignalCommandComplete (_, _, replyCh) -> replyCh.Reply (Result.Error e)
-                    | SaveOrder (_, _, replyCh)                -> replyCh.Reply (Result.Error e)
+                    | SaveOrder (_, replyCh)                   -> replyCh.Reply (Result.Error e)
                     | GetOrdersForSignal (_, replyCh)          -> replyCh.Reply (Result.Error e)
                     | GetExchangeOrder (_, replyCh)            -> replyCh.Reply (Result.Error e)
                     | GetTradedSymbols (_, replyCh)            -> replyCh.Reply (Result.Error e)
@@ -438,7 +385,7 @@ let getSignalsToBuyOrSell () = dbAgent.PostAndAsyncReply GetSignalsToBuyOrSell
 
 let setSignalsExpired signals = dbAgent.PostAndAsyncReply (fun replyCh -> SetSignalsExpired (signals, replyCh))
 
-let saveOrder order tradeMode = dbAgent.PostAndAsyncReply (fun replyCh -> SaveOrder (order, tradeMode, replyCh))
+let saveOrder order = dbAgent.PostAndAsyncReply (fun replyCh -> SaveOrder (order, replyCh))
 
 let getOrdersForSignal signalId = dbAgent.PostAndAsyncReply (fun replyCh -> GetOrdersForSignal (signalId, replyCh))
 
@@ -446,13 +393,14 @@ let getExchangeOrder id = dbAgent.PostAndAsyncReply (fun replyCh -> GetExchangeO
 
 let getTradedSymbols exchangeId = dbAgent.PostAndAsyncReply (fun replyCh -> GetTradedSymbols (exchangeId, replyCh))
 
-// Futures
-let getFuturesSignalCommands () = 
-    dbAgent.PostAndAsyncReply GetFuturesSignalCommands
+// Common
+let getSignalCommands () = 
+    dbAgent.PostAndAsyncReply GetSignalCommands
 
 let setSignalCommandsComplete commandIds commandStatus = 
     dbAgent.PostAndAsyncReply (fun replyCh -> SetSignalCommandComplete (commandIds, commandStatus, replyCh))
 
+// Futures
 let getPositionSize (signalId: SignalId) = 
     dbAgent.PostAndAsyncReply (fun replyCh -> GetPositionSize (signalId, replyCh))
 

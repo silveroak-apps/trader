@@ -12,7 +12,7 @@ type Signal = {
     ExchangeId: int64
 }
 
-type FuturesSignalCommandView = {
+type SignalCommandView = {
     Id: int64
     SignalId: int64
     ExchangeId: int64
@@ -28,7 +28,7 @@ type FuturesSignalCommandView = {
     Status: string
 }
 
-type FuturesPositionPnlView = {
+type PositionPnlView = {
     SignalId: int64
     Symbol: string
     PositionType: string
@@ -74,12 +74,12 @@ type ExchangeOrder = {
     LastTradeId: int64
 }
 
-type FuturesSignalCommandStatusUpdate = {
+type SignalCommandStatusUpdate = {
     CommandId: int64
     Status: string
 }
 
-type FuturesSignalStatusUpdate = {
+type SignalStatusUpdate = {
     SignalId: int64
     Status: string
 }

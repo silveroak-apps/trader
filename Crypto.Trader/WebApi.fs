@@ -20,9 +20,8 @@ let private makeDbSignalHandler placeRealOrders : HttpHandler =
 
                 // TODO refactor this properly:
                 Trade.Futures.processValidSignals 
-                    Db.getFuturesSignalCommands
+                    Db.getSignalCommands
                     Db.setSignalCommandsComplete
-                    Db.getExchangeOrder
                     Db.saveOrder
                     Db.getPositionSize
                     placeRealOrders |> Async.StartAsTask |> ignore
@@ -31,7 +30,6 @@ let private makeDbSignalHandler placeRealOrders : HttpHandler =
                     Db.getSignalsToBuyOrSell
                     Db.setSignalsExpired
                     Db.getOrdersForSignal
-                    Db.getExchangeOrder
                     Db.saveOrder
                     placeRealOrders |> Async.StartAsTask |> ignore
 
