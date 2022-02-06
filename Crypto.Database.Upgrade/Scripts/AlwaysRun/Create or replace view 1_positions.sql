@@ -1,6 +1,7 @@
 DROP VIEW IF EXISTS public.futures_positions CASCADE;
+DROP VIEW IF EXISTS public.positions CASCADE;
 
-CREATE OR REPLACE VIEW public.futures_positions
+CREATE OR REPLACE VIEW public.positions
 AS SELECT fs2.signal_id,
     fs2.symbol,
     fs2.position_type,
