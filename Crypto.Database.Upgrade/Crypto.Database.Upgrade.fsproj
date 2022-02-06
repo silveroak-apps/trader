@@ -12,8 +12,8 @@
     <None Include="ManualUpdates\reset-sell-signal-to-force-sell-now.sql" />
 
     <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 0_signal_order_summary.sql" />
-    <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 1_futures_positions.sql" />
-    <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 2_futures_pnl.sql" />
+    <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 1_positions.sql" />
+    <EmbeddedResource Include="Scripts\AlwaysRun\Create or replace view 2_pnl.sql" />
     <EmbeddedResource Include="Scripts\Script 0000 - Create tables.sql" />
     <EmbeddedResource Include="Scripts\Script 0001 - Add actual price and fee details to exchange order.sql" />
     <EmbeddedResource Include="Scripts\Script 0002 - Add insert time to sell_analysis_bids.sql" />
