@@ -1,6 +1,6 @@
 drop view if exists futures_pnl CASCADE;
-
-create or replace view futures_pnl
+drop view if exists pnl CASCADE;
+create or replace view pnl
 as
 select fp.*,
 	case
@@ -18,6 +18,6 @@ select fp.*,
 		when fs2.position_type = 'SHORT' then coalesce (executed_sell_qty, 0) - coalesce (executed_buy_qty, 0)
 		else -1
 	end AS position_size
-from futures_positions fp
+from positions fp
 	join signal fs2 on fs2.signal_id = fp.signal_id
 order by signal_id desc
